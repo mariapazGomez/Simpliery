@@ -1,0 +1,90 @@
+// ---------- Set de íconos line-style (portado de icons.jsx) ----------
+import type { CSSProperties } from 'react'
+
+const ICONS: Record<string, string> = {
+  dashboard: 'M3 13h8V3H3v10zm10 8h8V3h-8v18zM3 21h8v-6H3v6z',
+  ventas: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.6.6-.2 1.7.7 1.7H17M9 21a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z',
+  productos: 'M3.3 7l8.7 5 8.7-5M12 22V12M21 16V8a2 2 0 00-1-1.7l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.7l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
+  inventario: 'M20 7L12 3 4 7m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
+  reportes: 'M3 3v18h18M7 15l3-4 3 2 4-6',
+  clientes: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 10v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8',
+  config: 'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-2.7 1.1V21a2 2 0 11-4 0v-.1A1.6 1.6 0 007 19.4a1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00-1.1-2.7H1a2 2 0 110-4h.1A1.6 1.6 0 004.6 7a1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3H9a1.6 1.6 0 001-1.5V1a2 2 0 114 0v.1a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8V9a1.6 1.6 0 001.5 1H23a2 2 0 110 4h-.1a1.6 1.6 0 00-1.5 1z',
+  search: 'M11 19a8 8 0 100-16 8 8 0 000 16zm10 2l-4.3-4.3',
+  plus: 'M12 5v14M5 12h14',
+  minus: 'M5 12h14',
+  trash: 'M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6',
+  edit: 'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+  check: 'M20 6L9 17l-5-5',
+  x: 'M18 6L6 18M6 6l12 12',
+  alert: 'M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L14.7 3.9a2 2 0 00-3.4 0zM12 9v4M12 17h.01',
+  trendUp: 'M23 6l-9.5 9.5-5-5L1 18M17 6h6v6',
+  trendDown: 'M23 18l-9.5-9.5-5 5L1 6M17 18h6v-6',
+  cash: 'M2 7h20v10H2zM12 15a3 3 0 100-6 3 3 0 000 6zM6 10v.01M18 14v.01',
+  card: 'M2 7h20v10H2zM2 11h20',
+  box: 'M21 16V8a2 2 0 00-1-1.7l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.7l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z',
+  truck: 'M1 3h15v13H1zM16 8h4l3 3v5h-7M5.5 18.5a2 2 0 100-4 2 2 0 000 4zm13 0a2 2 0 100-4 2 2 0 000 4z',
+  bell: 'M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0',
+  chevR: 'M9 18l6-6-6-6',
+  chevD: 'M6 9l6 6 6-6',
+  filter: 'M22 3H2l8 9.5V19l4 2v-8.5L22 3z',
+  star: 'M12 2l3 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.9 21l1.2-6.8-5-4.9 6.9-1L12 2z',
+  download: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3',
+  clock: 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2',
+  egg: 'M12 22c4 0 7-2.7 7-7 0-5-3-13-7-13S5 10 5 15c0 4.3 3 7 7 7z',
+  store: 'M3 9l1.5-5h15L21 9M4 9v11h16V9M9 20v-6h6v6',
+  zap: 'M13 2L3 14h7l-1 8 10-12h-7l1-8z',
+  arrowUp: 'M12 19V5M5 12l7-7 7 7',
+  tag: 'M20.6 13.4L13.4 20.6a2 2 0 01-2.8 0l-7.2-7.2A2 2 0 013 12V5a2 2 0 012-2h7a2 2 0 011.4.6l7.2 7.2a2 2 0 010 2.6zM7 7h.01',
+  percent: 'M19 5L5 19M6.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zm11 11a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+  receipt: 'M4 2v20l2-1.5L8 22l2-1.5L12 22l2-1.5L16 22l2-1.5L20 22V2l-2 1.5L16 2l-2 1.5L12 2l-2 1.5L8 2 6 3.5 4 2zM8 7h8M8 11h8M8 15h5',
+  history: 'M3 3v5h5M3.05 13A9 9 0 106 5.3L3 8M12 7v5l4 2',
+  mail: 'M3 8l7.9 5.3a2 2 0 002.2 0L21 8M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z',
+  send: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z',
+  users: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm8 6v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8',
+  sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+  phone: 'M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6 19.8 19.8 0 01-3.1-8.6A2 2 0 014.1 2h3a2 2 0 012 1.7c.2.96.5 1.9.7 2.8a2 2 0 01-.4 2L8.1 9.8a16 16 0 006 6l1.3-1.3a2 2 0 012-.5c.9.3 1.84.6 2.8.7A2 2 0 0122 16.9z',
+  copy: 'M8 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2M8 4a2 2 0 002 2h4a2 2 0 002-2M8 4a2 2 0 012-2h4a2 2 0 012 2',
+  segment: 'M12 2a10 10 0 100 20A10 10 0 0012 2zM2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20',
+  // Alias usados por finanzas-shell / pantallas:
+  wallet: 'M2 7h20v10H2zM12 15a3 3 0 100-6 3 3 0 000 6zM6 10v.01M18 14v.01',
+  trending: 'M23 6l-9.5 9.5-5-5L1 18M17 6h6v6',
+  coins: 'M2 7h20v10H2zM12 15a3 3 0 100-6 3 3 0 000 6zM6 10v.01M18 14v.01',
+  building: 'M3 9l1.5-5h15L21 9M4 9v11h16V9M9 20v-6h6v6',
+  balance: 'M12 3v18M5 21h14M3 7l9-4 9 4M5 7l2 7h-4l2-7zm14 0l2 7h-4l2-7z',
+  calculator: 'M4 2h16v20H4zM8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h8',
+  target: 'M12 22a10 10 0 100-20 10 10 0 000 20zm0-4a6 6 0 100-12 6 6 0 000 12zm0-4a2 2 0 100-4 2 2 0 000 4z',
+  shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+  logout: 'M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9',
+  piggy: 'M19 11V9a7 7 0 00-14 0v1a2 2 0 00-2 2v1a2 2 0 002 2v1a4 4 0 004 4h6a4 4 0 004-4v-1a2 2 0 002-2v-1a2 2 0 00-2-2zm-7 6h-2v-1h2v1zm3-4H9a1 1 0 010-2h6a1 1 0 010 2z',
+  nomina: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 3l-4 4-2-2',
+  megaphone: 'M18 8a2 2 0 000 4M2 8v6a2 2 0 002 2h1.5v4l4-4H12a2 2 0 002-2V8a2 2 0 00-2-2H4a2 2 0 00-2 2z',
+}
+
+interface IconProps {
+  name: string
+  size?: number
+  stroke?: number
+  style?: CSSProperties
+  className?: string
+}
+
+export function Icon({ name, size = 18, stroke = 2, style, className }: IconProps) {
+  const d = ICONS[name] || ICONS.box
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={stroke}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={style}
+      className={className}
+      aria-hidden="true"
+    >
+      <path d={d} />
+    </svg>
+  )
+}
