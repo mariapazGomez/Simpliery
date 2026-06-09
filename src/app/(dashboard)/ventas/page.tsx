@@ -42,6 +42,19 @@ interface ClienteForm {
 
 const emptyCliente: ClienteForm = { nombre: '', numero: '', correo: '', direccion: '', depto: '', ciudad: '' }
 
+/** Detecta viewport móvil para mostrar el flujo de venta por pasos (estilo Kyte). */
+function useIsMobile(bp = 760) {
+  const [mobile, setMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width:${bp}px)`)
+    const on = () => setMobile(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [bp])
+  return mobile
+}
+
 function ProductPicker({ onPick, onPickFormat }: { onPick: (p: ProductWithKg) => void; onPickFormat: (p: ProductWithKg, fmt: Format, qty: number) => void }) {
   const { products } = useStore()
   const { productHasFormats } = useFormats()
@@ -411,7 +424,9 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
 type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount: number } | null }
 
 export default function VentasPage() {
-  const { registrarVenta, settings, toast } = useStore()
+  const { registrarVenta, settings, toast, products } = useStore()
+  const { productHasFormats } = useFormats()
+  const isMobile = useIsMobile()
   const [cart, setCart] = useState<CartLine[]>([])
   const [method, setMethod] = useState('Efectivo')
   const [tipo, setTipo] = useState<'local' | 'despacho'>('local')
@@ -419,6 +434,13 @@ export default function VentasPage() {
   const [confirmed, setConfirmed] = useState<ConfirmedSale | null>(null)
   const [mixedPay, setMixedPay] = useState<{ secondary: string; amount: string } | null>(null)
   const [discount, setDiscount] = useState<{ type: 'pct' | 'fixed'; value: string }>({ type: 'pct', value: '' })
+  // Estado del flujo móvil por pasos (catálogo → carrito → pago)
+  const [mStep, setMStep] = useState<'catalogo' | 'carrito' | 'pago'>('catalogo')
+  const [mCat, setMCat] = useState('Todas')
+  const [mQuery, setMQuery] = useState('')
+  const [mFmt, setMFmt] = useState<ProductWithKg | null>(null)
+  const [showDiscount, setShowDiscount] = useState(false)
+  const [showCliente, setShowCliente] = useState(false)
   const draftKey = 'cl_draft_cart'
   const [hasDraft] = useState(() => (typeof localStorage !== 'undefined' ? !!localStorage.getItem(draftKey) : false))
 
@@ -480,9 +502,252 @@ export default function VentasPage() {
     setCart([])
     setCliente(emptyCliente)
     setDiscount({ type: 'pct', value: '' })
+    setMStep('catalogo')
+    setShowCliente(false)
+    setShowDiscount(false)
   }
 
   const stickyStyle: CSSProperties = { position: 'sticky', top: 84 }
+
+  // ── Flujo móvil por pasos (estilo Kyte): catálogo → carrito → pago ──
+  if (isMobile) {
+    const cats = ['Todas', ...new Set([...products.map((p) => p.cat), ...CATEGORIES])]
+    const list = (products as ProductWithKg[]).filter((p) => (mCat === 'Todas' || p.cat === mCat) && p.name.toLowerCase().includes(mQuery.toLowerCase()))
+    const qtyOf = (id: number) => cart.filter((i) => i.productId === id).reduce((a, i) => a + i.qty, 0)
+    const totalItems = cart.reduce((a, i) => a + i.qty, 0)
+
+    return (
+      <div className="fade-in" style={{ paddingBottom: 88 }}>
+        {/* ───── Paso 1: Catálogo ───── */}
+        {mStep === 'catalogo' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <SearchBox value={mQuery} onChange={setMQuery} placeholder="Buscar producto…" width="100%" />
+            <div style={{ display: 'flex', gap: 2, overflowX: 'auto', borderBottom: '1px solid var(--line)', margin: '0 -2px' }}>
+              {cats.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setMCat(c)}
+                  style={{ padding: '10px 13px', whiteSpace: 'nowrap', background: 'none', border: 'none', borderBottom: '2px solid ' + (mCat === c ? 'var(--primary)' : 'transparent'), color: mCat === c ? 'var(--primary-700)' : 'var(--ink-3)', fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: '.02em', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
+                >
+                  {c !== 'Todas' && <CatDot cat={c} size={10} />}
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            {mFmt && (
+              <FormatPicker
+                product={mFmt}
+                onPick={(product, fmt, qty) => {
+                  addFormat(product, fmt, qty)
+                  setMFmt(null)
+                }}
+                onCancel={() => setMFmt(null)}
+              />
+            )}
+
+            {list.length === 0 ? (
+              <EmptyState icon="box" title="Sin productos" text={mQuery ? 'No hay coincidencias con tu búsqueda.' : 'Aún no tienes productos en esta categoría.'} />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(104px,1fr))', gap: 9 }}>
+                {list.map((p) => {
+                  const st = stockState(p)
+                  const hasFmt = productHasFormats(p.id)
+                  const q = qtyOf(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      disabled={st === 'sin'}
+                      onClick={() => {
+                        if (st === 'sin') return
+                        if (hasFmt) setMFmt((m) => (m?.id === p.id ? null : p))
+                        else add(p)
+                      }}
+                      className="card"
+                      style={{ position: 'relative', padding: 0, overflow: 'hidden', textAlign: 'left', border: '1px solid ' + (mFmt?.id === p.id ? 'var(--primary)' : 'var(--line)'), display: 'flex', flexDirection: 'column', opacity: st === 'sin' ? 0.5 : 1, cursor: st === 'sin' ? 'not-allowed' : 'pointer' }}
+                    >
+                      {q > 0 && (
+                        <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 6px', borderRadius: 7, background: 'var(--primary)', color: '#fff', fontWeight: 800, fontSize: 13, display: 'grid', placeItems: 'center', zIndex: 2 }}>{q}</span>
+                      )}
+                      <div style={{ width: '100%', aspectRatio: '1 / 1', flexShrink: 0, background: p.photo ? undefined : `${catColor(p.cat)}18` }}>
+                        {p.photo ? (
+                          <img src={p.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                            <CatDot cat={p.cat} size={18} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ background: '#3a4150', color: '#fff', padding: '7px 9px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</div>
+                        <div className="tnum" style={{ fontSize: 13, fontWeight: 800, marginTop: 4 }}>{hasFmt ? 'Varios' : fmtCLP(p.price)}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ───── Paso 2: Carrito ───── */}
+        {mStep === 'carrito' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 14px' }}>
+              <button className="btn btn-ghost btn-icon" onClick={() => setMStep('catalogo')} aria-label="Volver">
+                <Icon name="chevL" size={18} />
+              </button>
+              <div style={{ fontWeight: 800, fontSize: 19 }}>Carrito</div>
+              <span className="chip chip-neutral" style={{ marginLeft: 'auto' }}>{totalItems} art.</span>
+              {cart.length > 0 && (
+                <button className="btn btn-ghost btn-icon" onClick={() => setCart([])} title="Vaciar">
+                  <Icon name="trash" size={16} />
+                </button>
+              )}
+            </div>
+
+            {cart.length === 0 ? (
+              <EmptyState icon="ventas" title="Carrito vacío" text="Vuelve al catálogo y elige productos." />
+            ) : (
+              <div className="card">
+                {cart.map((i) => (
+                  <CartItemRow key={i.productId + (i.formatId || '')} i={i} setQty={setQty} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} />
+                ))}
+                <div style={{ padding: '14px 18px' }}>
+                  {!showDiscount && discAmt === 0 ? (
+                    <button className="btn btn-ghost" style={{ color: 'var(--primary-700)', fontWeight: 700, padding: 0 }} onClick={() => setShowDiscount(true)}>
+                      <Icon name="tag" size={14} />
+                      Dar descuento
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                      <div className="seg" style={{ flexShrink: 0, padding: '2px' }}>
+                        <button className={discount.type === 'pct' ? 'on' : ''} onClick={() => setDiscount((d) => ({ ...d, type: 'pct' }))} style={{ padding: '6px 11px', fontSize: 12 }}>%</button>
+                        <button className={discount.type === 'fixed' ? 'on' : ''} onClick={() => setDiscount((d) => ({ ...d, type: 'fixed' }))} style={{ padding: '6px 11px', fontSize: 12 }}>$</button>
+                      </div>
+                      <div className="input-pre" style={{ flex: 1 }}>
+                        {discount.type === 'fixed' && <span className="pre" style={{ paddingLeft: 10, paddingRight: 3, fontSize: 13 }}>$</span>}
+                        <input className="tnum" inputMode="numeric" placeholder="Descuento" value={discount.value} onChange={(e) => setDiscount((d) => ({ ...d, value: e.target.value.replace(/[^0-9.]/g, '') }))} style={{ padding: '9px 8px 9px ' + (discount.type === 'fixed' ? '2' : '10') + 'px', fontSize: 14, border: 'none', outline: 'none', background: 'none', width: '100%' }} />
+                        {discount.type === 'pct' && <span style={{ padding: '0 8px 0 0', color: 'var(--ink-3)', fontWeight: 700, fontSize: 13 }}>%</span>}
+                      </div>
+                      <button className="btn btn-ghost btn-icon" style={{ width: 36, height: 36, flexShrink: 0 }} onClick={() => { setDiscount({ type: 'pct', value: '' }); setShowDiscount(false) }}>
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+                    <Row label="Subtotal" value={fmtCLP(subtotal)} />
+                    {discAmt > 0 && <Row label="Descuento" value={'−' + fmtCLP(discAmt)} muted />}
+                    <Row label="TOTAL" value={fmtCLP(finalTotal)} strong tone="primary" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ───── Paso 3: Pago ───── */}
+        {mStep === 'pago' && (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0 6px' }}>
+              <button className="btn btn-ghost btn-icon" onClick={() => setMStep('carrito')} aria-label="Volver">
+                <Icon name="chevL" size={18} />
+              </button>
+              <div style={{ fontWeight: 800, fontSize: 19 }}>Pago</div>
+            </div>
+
+            <div style={{ textAlign: 'center', padding: '26px 0 18px' }}>
+              <div style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 700 }}>Total a cobrar</div>
+              <div className="tnum" style={{ fontSize: 40, fontWeight: 800, color: 'var(--ink)', lineHeight: 1.1, marginTop: 4 }}>{fmtCLP(finalTotal)}</div>
+            </div>
+
+            {/* Tipo de venta */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+              {([{ k: 'local', label: 'En local', icon: 'store' }, { k: 'despacho', label: 'Despacho', icon: 'truck' }] as const).map((t) => (
+                <button
+                  key={t.k}
+                  onClick={() => { setTipo(t.k); setCliente(emptyCliente); if (t.k === 'despacho') setShowCliente(true) }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 8px', border: '2px solid ' + (tipo === t.k ? 'var(--primary)' : 'var(--line)'), borderRadius: 12, background: tipo === t.k ? 'var(--primary-tint)' : 'var(--surface)', color: tipo === t.k ? 'var(--primary-700)' : 'var(--ink-2)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  <Icon name={t.icon} size={17} />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Cliente */}
+            {!showCliente && tipo === 'local' ? (
+              <button className="btn btn-soft" style={{ width: '100%', justifyContent: 'center', marginBottom: 14 }} onClick={() => setShowCliente(true)}>
+                <Icon name="clientes" size={16} />
+                Incluir un cliente
+              </button>
+            ) : (
+              <div style={{ marginBottom: 6 }}>
+                <ClienteSelector tipo={tipo} cliente={cliente} setCliente={setCliente} />
+              </div>
+            )}
+
+            {/* Método de pago */}
+            <div style={{ margin: '14px 0 8px', fontSize: 13.5, fontWeight: 800, color: 'var(--ink-2)' }}>Método de pago</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {[...settings.methods, 'Crédito'].map((mm) => {
+                const isCredito = mm === 'Crédito'
+                const active = method === mm
+                return (
+                  <button key={mm} onClick={() => setMethod(mm)} className="btn" style={{ padding: '12px 4px', fontSize: 12, flexDirection: 'column', gap: 5, height: 66, border: '1px solid ' + (active ? (isCredito ? 'var(--warn)' : 'var(--primary)') : 'var(--line-2)'), background: active ? (isCredito ? 'var(--warn-tint)' : 'var(--primary-tint)') : 'var(--surface)', color: active ? (isCredito ? 'oklch(0.50 0.10 70)' : 'var(--primary-700)') : 'var(--ink-2)' }}>
+                    <Icon name={mm === 'Efectivo' ? 'cash' : mm === 'Tarjeta' ? 'card' : isCredito ? 'receipt' : 'arrowUp'} size={18} />
+                    {mm}
+                  </button>
+                )
+              })}
+            </div>
+
+            {method === 'Crédito' && (
+              <div style={{ marginTop: 12, padding: '11px 13px', background: 'var(--warn-tint)', borderRadius: 11, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <Icon name="alert" size={14} style={{ color: 'oklch(0.50 0.10 70)', flexShrink: 0, marginTop: 2 }} />
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'oklch(0.45 0.10 70)', lineHeight: 1.4 }}>La venta quedará pendiente. El cliente aparecerá en <strong>Deudores</strong>. Debes ingresar su nombre.</div>
+              </div>
+            )}
+
+            {marginWarn && (
+              <div style={{ padding: '9px 11px', background: 'var(--warn-tint)', borderRadius: 10, fontSize: 12, color: 'oklch(0.45 0.10 70)', fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
+                <Icon name="alert" size={13} />
+                El margen de esta venta queda bajo el {settings.minMargin || 25}%
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ───── Barra inferior fija (acción del paso) ───── */}
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 46, padding: '10px 14px calc(10px + env(safe-area-inset-bottom))', background: 'var(--surface)', borderTop: '1px solid var(--line)', display: 'flex', gap: 10 }}>
+          {mStep === 'catalogo' && (
+            cart.length === 0 ? (
+              <div style={{ flex: 1, textAlign: 'center', padding: '14px', border: '1px solid var(--primary)', borderRadius: 12, color: 'var(--primary-700)', fontWeight: 800, fontSize: 15 }}>Ningún ítem</div>
+            ) : (
+              <button className="btn btn-lg" style={{ flex: 1, background: 'var(--primary)', color: '#fff', justifyContent: 'space-between' }} onClick={() => setMStep('carrito')}>
+                <span style={{ fontWeight: 800 }}>{totalItems} {totalItems === 1 ? 'ítem' : 'ítems'} · {fmtCLP(finalTotal)}</span>
+                <Icon name="chevR" size={18} />
+              </button>
+            )
+          )}
+          {mStep === 'carrito' && (
+            <button className="btn btn-lg" style={{ flex: 1, background: 'var(--primary)', color: '#fff', justifyContent: 'space-between' }} disabled={cart.length === 0} onClick={() => setMStep('pago')}>
+              <span style={{ fontWeight: 800 }}>Continuar · {fmtCLP(finalTotal)}</span>
+              <Icon name="chevR" size={18} />
+            </button>
+          )}
+          {mStep === 'pago' && (
+            <button className="btn btn-lg" style={{ flex: 1, background: method === 'Crédito' ? 'var(--warn)' : 'var(--primary)', color: '#fff', justifyContent: 'center' }} disabled={!canConfirm} onClick={confirm}>
+              <Icon name={method === 'Crédito' ? 'receipt' : tipo === 'despacho' ? 'truck' : 'check'} size={18} />
+              {method === 'Crédito' ? 'Registrar a crédito' : 'Confirmar'} · {fmtCLP(finalTotal)}
+            </button>
+          )}
+        </div>
+
+        {confirmed && <ComprobanteModal sale={confirmed} onClose={() => setConfirmed(null)} />}
+      </div>
+    )
+  }
 
   return (
     <div className="fade-in">
