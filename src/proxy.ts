@@ -8,8 +8,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Corre en todas las rutas excepto estáticos e imágenes.
+  // Corre en todas las rutas excepto estáticos, imágenes y assets de la PWA
+  // (manifiesto, service worker e íconos) — deben servirse sin sesión para
+  // poder instalar la app desde la pantalla de login.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }

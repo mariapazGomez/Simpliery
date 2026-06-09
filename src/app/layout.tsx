@@ -1,6 +1,7 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Nunito } from 'next/font/google'
 import './globals.css'
+import { PwaRegister } from '@/components/pwa-register'
 
 // Fuente redondeada estilo Kyte ERP
 const nunito = Nunito({
@@ -13,12 +14,28 @@ const nunito = Nunito({
 export const metadata: Metadata = {
   title: 'Control Local — Ventas, stock y ganancias sin planillas',
   description: 'Controla tus ventas, stock y ganancias en minutos, sin saber usar Excel.',
+  applicationName: 'Control Local',
+  appleWebApp: {
+    capable: true,
+    title: 'Control Local',
+    statusBarStyle: 'default',
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#647355',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es-CL" className={nunito.variable}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <PwaRegister />
+      </body>
     </html>
   )
 }
