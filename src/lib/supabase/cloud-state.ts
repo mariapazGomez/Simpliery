@@ -23,21 +23,24 @@ export function reviveDates<T>(v: T): T {
   return v
 }
 
-/** El negocio del usuario autenticado (de su perfil). null mientras carga. */
-export function useNegocioId(): string | null {
-  const [id, setId] = useState<string | null>(null)
+/** Perfil del usuario autenticado: su negocio y su rol. null mientras carga. */
+export function usePerfil(): { negocioId: string | null; rol: string | null } {
+  const [perfil, setPerfil] = useState<{ negocioId: string | null; rol: string | null }>({ negocioId: null, rol: null })
   useEffect(() => {
     let alive = true
     ;(async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const { data, error } = await supabase.from('perfiles').select('negocio_id').eq('id', user.id).maybeSingle()
+      const { data, error } = await supabase.from('perfiles').select('negocio_id, rol').eq('id', user.id).maybeSingle()
       if (error) console.error('No se pudo cargar el perfil:', error)
-      if (alive && data) setId((data as { negocio_id: string }).negocio_id)
+      if (alive && data) {
+        const d = data as { negocio_id: string; rol: string }
+        setPerfil({ negocioId: d.negocio_id, rol: d.rol })
+      }
     })()
     return () => { alive = false }
   }, [])
-  return id
+  return perfil
 }
 
 interface WithId {

@@ -2,11 +2,12 @@
 
 // ---------- Shell del dashboard (portado de app.jsx → App Router) ----------
 import { useState, useEffect, Component, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
-import { StoreProvider, useMetrics } from '@/lib/store'
+import { usePathname, useRouter } from 'next/navigation'
+import { StoreProvider, useMetrics, useStore } from '@/lib/store'
 import { FinanzasProvider } from '@/lib/finanzas-store'
 import { FormatsProvider } from '@/lib/formats-store'
-import { PATH_TO_ID, TITLES, useGo } from '@/lib/nav'
+import { PATH_TO_ID, TITLES, ROUTE_MAP, useGo } from '@/lib/nav'
+import { puedeVer, inicio } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { Sidebar } from '@/components/shell/sidebar'
 import { NotifDrawer } from '@/components/notif-drawer'
@@ -40,14 +41,22 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { err: Error | nu
 
 function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const go = useGo()
   const m = useMetrics()
+  const { rol } = useStore()
 
   const activeId = PATH_TO_ID[pathname] || (pathname?.startsWith('/finanzas') ? 'finanzas' : 'dashboard')
   const [t1] = TITLES[activeId] || ['—', '']
+  const allowed = puedeVer(rol, activeId)
+
+  // Si el rol no puede ver esta sección, redirige a su inicio permitido.
+  useEffect(() => {
+    if (rol && !allowed) router.replace(ROUTE_MAP[inicio(rol)] || '/ventas')
+  }, [rol, allowed, router])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -89,7 +98,7 @@ function AppShell({ children }: { children: ReactNode }) {
             {notifCount > 0 && <span style={{ position: 'absolute', top: 7, right: 8, width: 7, height: 7, borderRadius: '50%', background: 'var(--danger)' }}></span>}
           </button>
         </header>
-        <div className="content">{children}</div>
+        <div className="content">{allowed ? children : <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--ink-3)', fontWeight: 600 }}>Redirigiendo…</div>}</div>
       </div>
       <NotifDrawer open={notifOpen} onClose={() => setNotifOpen(false)} go={go} />
       {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} go={go} />}

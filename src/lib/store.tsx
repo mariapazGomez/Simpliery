@@ -7,7 +7,7 @@ import { createContext, useContext, useState, useCallback, useMemo, type ReactNo
 import { catColor, stockState, fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PRODUCTS, CATEGORIES } from '@/lib/data'
-import { useNegocioId, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
+import { usePerfil, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
 import type {
   Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics,
 } from '@/types'
@@ -209,6 +209,7 @@ interface RegistrarVentaExtra {
 
 interface StoreValue {
   negocioId: string | null
+  rol: string | null
   products: Product[]
   sales: Sale[]
   movements: Movement[]
@@ -240,7 +241,7 @@ export function useStore(): StoreValue {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const negocioId = useNegocioId()
+  const { negocioId, rol } = usePerfil()
   const [products, setProducts, rdyProd] = useCloudCollection<Product>('productos', negocioId)
   const [sales, setSales, rdySales] = useCloudCollection<Sale>('ventas', negocioId)
   const [clientes, setClientes, rdyCli] = useCloudCollection<Cliente>('clientes', negocioId)
@@ -404,7 +405,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   if (cargando) return <PantallaCargando />
 
   const value: StoreValue = {
-    negocioId,
+    negocioId, rol,
     products, sales, movements, settings, setSettings, toast, clientes,
     registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
     deleteSale, updateSale,

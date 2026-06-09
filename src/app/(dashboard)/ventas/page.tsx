@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from
 import { useStore, useMetrics, clientMetrics, TODAY } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
 import { fmtCLP, fmtNum, fmtPct, catColor, stockState } from '@/lib/format'
+import { puedeVerDinero } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
 import { FormatPicker } from '@/components/formatos'
@@ -359,7 +360,7 @@ function InlinePriceEdit({ value, onChange, label }: { value: number; onChange: 
   )
 }
 
-function CartItemRow({ i, setQty, setQtySimple, remove, setItemPrice }: { i: CartLine; setQty: (id: number, fmt: string, d: number) => void; setQtySimple: (id: number, d: number) => void; remove: (id: number) => void; setItemPrice: (id: number, fid: string | undefined, v: number) => void }) {
+function CartItemRow({ i, setQty, setQtySimple, remove, setItemPrice, verDinero = true }: { i: CartLine; setQty: (id: number, fmt: string, d: number) => void; setQtySimple: (id: number, d: number) => void; remove: (id: number) => void; setItemPrice: (id: number, fid: string | undefined, v: number) => void; verDinero?: boolean }) {
   const isKg = /kg|kilo|gram|gr|g\b/i.test(i.unit || '')
   const priceChanged = i.price !== i.originalPrice
   const gain = (i.price - i.cost) * i.qty
@@ -400,12 +401,14 @@ function CartItemRow({ i, setQty, setQtySimple, remove, setItemPrice }: { i: Car
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className="tnum" style={{ fontSize: 12, color: gain < 0 ? 'var(--danger)' : gain > 0 ? 'var(--primary-700)' : 'var(--ink-3)', fontWeight: 700 }}>Gan. {fmtCLP(gain)}</span>
-          <span className="tnum" style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{fmtPct(gainPct)}</span>
-          {gainPct < 0 && <span className="chip chip-danger" style={{ fontSize: 11, padding: '2px 7px' }}>Pérdida</span>}
-          {gainPct > 0 && gainPct < 15 && <span className="chip chip-warn" style={{ fontSize: 11, padding: '2px 7px' }}>Margen bajo</span>}
-        </div>
+        {verDinero && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span className="tnum" style={{ fontSize: 12, color: gain < 0 ? 'var(--danger)' : gain > 0 ? 'var(--primary-700)' : 'var(--ink-3)', fontWeight: 700 }}>Gan. {fmtCLP(gain)}</span>
+            <span className="tnum" style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{fmtPct(gainPct)}</span>
+            {gainPct < 0 && <span className="chip chip-danger" style={{ fontSize: 11, padding: '2px 7px' }}>Pérdida</span>}
+            {gainPct > 0 && gainPct < 15 && <span className="chip chip-warn" style={{ fontSize: 11, padding: '2px 7px' }}>Margen bajo</span>}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -424,9 +427,10 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
 type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount: number } | null }
 
 export default function VentasPage() {
-  const { registrarVenta, settings, toast, products } = useStore()
+  const { registrarVenta, settings, toast, products, rol } = useStore()
   const { productHasFormats } = useFormats()
   const isMobile = useIsMobile()
+  const verDinero = puedeVerDinero(rol)
   const [cart, setCart] = useState<CartLine[]>([])
   const [method, setMethod] = useState('Efectivo')
   const [tipo, setTipo] = useState<'local' | 'despacho'>('local')
@@ -463,12 +467,19 @@ export default function VentasPage() {
     }
   }
 
-  const add = (p: ProductWithKg) =>
+  const add = (p: ProductWithKg) => {
+    // No permitir vender más de lo que hay en stock (evita descuadres al anular).
+    const enCarro = cart.filter((i) => i.productId === p.id && !i.formatId).reduce((a, i) => a + i.qty, 0)
+    if (enCarro >= p.stock) {
+      toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock}`)
+      return
+    }
     setCart((c) => {
       const e = c.find((i) => i.productId === p.id && !i.formatId)
       if (e) return c.map((i) => (i.productId === p.id && !i.formatId ? { ...i, qty: i.qty + 1 } : i))
       return [...c, { productId: p.id, name: p.name, cat: p.cat, price: p.price, cost: p.cost, qty: 1 }]
     })
+  }
   const addFormat = (p: ProductWithKg, fmt: Format, qty: number) =>
     setCart((c) => {
       const cartName = `${p.name} — ${fmt.name}`
@@ -478,7 +489,14 @@ export default function VentasPage() {
       return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price: fmt.price, originalPrice: fmt.price, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
     })
   const setQty = (id: number, fmt: string, d: number) => setCart((c) => c.map((i) => (i.productId === id && i.formatId === fmt ? { ...i, qty: Math.max(1, i.qty + d) } : i)))
-  const setQtySimple = (id: number, d: number) => setCart((c) => c.map((i) => (i.productId === id && !i.formatId ? { ...i, qty: Math.max(1, i.qty + d) } : i)))
+  const setQtySimple = (id: number, d: number) =>
+    setCart((c) =>
+      c.map((i) => {
+        if (i.productId !== id || i.formatId) return i
+        const max = products.find((x) => x.id === id)?.stock ?? Infinity
+        return { ...i, qty: Math.max(1, Math.min(max, i.qty + d)) }
+      }),
+    )
   const setItemPrice = (id: number, fid: string | undefined, newPrice: number) => setCart((c) => c.map((i) => (i.productId === id && (i.formatId || null) === (fid || null) ? { ...i, price: Math.max(0, +newPrice || 0) } : i)))
   const remove = (id: number) => setCart((c) => c.filter((i) => i.productId !== id))
 
@@ -611,7 +629,7 @@ export default function VentasPage() {
             ) : (
               <div className="card">
                 {cart.map((i) => (
-                  <CartItemRow key={i.productId + (i.formatId || '')} i={i} setQty={setQty} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} />
+                  <CartItemRow key={i.productId + (i.formatId || '')} i={i} setQty={setQty} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />
                 ))}
                 <div style={{ padding: '14px 18px' }}>
                   {!showDiscount && discAmt === 0 ? (
@@ -709,7 +727,7 @@ export default function VentasPage() {
               </div>
             )}
 
-            {marginWarn && (
+            {verDinero && marginWarn && (
               <div style={{ padding: '9px 11px', background: 'var(--warn-tint)', borderRadius: 10, fontSize: 12, color: 'oklch(0.45 0.10 70)', fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center', marginTop: 12 }}>
                 <Icon name="alert" size={13} />
                 El margen de esta venta queda bajo el {settings.minMargin || 25}%
@@ -812,7 +830,7 @@ export default function VentasPage() {
             {cart.length === 0 ? (
               <EmptyState icon="ventas" title="Carrito vacío" text="Elige productos de la izquierda para empezar." />
             ) : (
-              cart.map((i) => <CartItemRow key={i.productId + (i.formatId || '')} i={i} setQty={setQty} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} />)
+              cart.map((i) => <CartItemRow key={i.productId + (i.formatId || '')} i={i} setQty={setQty} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)
             )}
           </div>
 
@@ -821,10 +839,10 @@ export default function VentasPage() {
             <Row label="Subtotal" value={fmtCLP(subtotal)} />
             {discAmt > 0 && <Row label={`Descuento ${discount.type === 'pct' ? fmtPct(+discount.value) : fmtCLP(discAmt)}`} value={'−' + fmtCLP(discAmt)} muted />}
             {discAmt > 0 && <Row label="Total con descuento" value={fmtCLP(finalTotal)} strong />}
-            <Row label="Costo total" value={fmtCLP(costTotal)} muted />
-            <Row label="Ganancia estimada" value={fmtCLP(finalProfit)} strong tone="primary" />
-            <Row label="Margen de la venta" value={fmtPct(finalMargin)} muted />
-            {marginWarn && (
+            {verDinero && <Row label="Costo total" value={fmtCLP(costTotal)} muted />}
+            {verDinero && <Row label="Ganancia estimada" value={fmtCLP(finalProfit)} strong tone="primary" />}
+            {verDinero && <Row label="Margen de la venta" value={fmtPct(finalMargin)} muted />}
+            {verDinero && marginWarn && (
               <div style={{ padding: '8px 10px', background: 'var(--warn-tint)', borderRadius: 9, fontSize: 12, color: 'oklch(0.45 0.10 70)', fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
                 <Icon name="alert" size={12} />
                 El descuento deja el margen bajo el {settings.minMargin || 25}%

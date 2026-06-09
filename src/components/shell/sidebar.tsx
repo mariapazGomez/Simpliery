@@ -5,11 +5,12 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useMemo } from 'react'
 import { useStore, useMetrics, clientMetrics } from '@/lib/store'
 import { NAV_GROUPS, PATH_TO_ID, useGo } from '@/lib/nav'
+import { puedeVer } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { createClient } from '@/lib/supabase/client'
 
 export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
-  const { settings, clientes } = useStore()
+  const { settings, clientes, rol } = useStore()
   const m = useMetrics()
   const go = useGo()
   const router = useRouter()
@@ -39,15 +40,20 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
         </div>
       </div>
 
-      <button className="btn btn-primary" style={{ margin: '2px 6px 6px', justifyContent: 'center' }} onClick={() => { go('ventas'); setOpen(false) }}>
-        <Icon name="plus" size={17} />
-        Registrar venta
-      </button>
+      {puedeVer(rol, 'ventas') && (
+        <button className="btn btn-primary" style={{ margin: '2px 6px 6px', justifyContent: 'center' }} onClick={() => { go('ventas'); setOpen(false) }}>
+          <Icon name="plus" size={17} />
+          Registrar venta
+        </button>
+      )}
 
-      {NAV_GROUPS.map((g) => (
+      {NAV_GROUPS.map((g) => {
+        const items = g.items.filter((n) => puedeVer(rol, n.id))
+        if (items.length === 0) return null
+        return (
         <div key={g.label}>
           <div className="nav-label">{g.label}</div>
-          {g.items.map((n) => (
+          {items.map((n) => (
             <button key={n.id} className={'nav-item' + (activeId === n.id ? ' active' : '')} onClick={() => { go(n.id); setOpen(false) }}>
               <Icon name={n.icon} size={19} className="nav-ic" />
               {n.label}
@@ -59,7 +65,8 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
             </button>
           ))}
         </div>
-      ))}
+        )
+      })}
 
       <div className="sidebar-foot">
         <div className="user-chip">
