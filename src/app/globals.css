@@ -92,7 +92,7 @@
 *{ box-sizing:border-box; }
 html,body{ margin:0; padding:0; }
 body{
-  font-family:var(--font-sans, 'Nunito'), system-ui, -apple-system, sans-serif;
+  font-family:var(--font-nunito, 'Nunito'), system-ui, -apple-system, sans-serif;
   background:var(--bg);
   color:var(--ink);
   -webkit-font-smoothing:antialiased;
