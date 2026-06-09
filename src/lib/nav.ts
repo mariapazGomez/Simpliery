@@ -8,6 +8,7 @@ import { useCallback } from 'react'
 export const ROUTE_MAP: Record<string, string> = {
   dashboard: '/dashboard',
   ventas: '/ventas',
+  transacciones: '/transacciones',
   productos: '/productos',
   inventario: '/inventario',
   despachos: '/despachos',
@@ -34,6 +35,7 @@ export const PATH_TO_ID: Record<string, string> = Object.fromEntries(
 export const TITLES: Record<string, [string, string]> = {
   dashboard: ['Inicio', 'Tu negocio de un vistazo'],
   ventas: ['Ventas', 'Registra una venta en segundos'],
+  transacciones: ['Transacciones', 'Historial de ventas con su detalle'],
   productos: ['Productos', 'Tu catálogo y precios'],
   inventario: ['Inventario', 'Stock y reposición'],
   clientes: ['Clientes', 'Historial y análisis de compra'],
@@ -57,6 +59,7 @@ export const NAV_GROUPS: { label: string; items: { id: string; label: string; ic
     items: [
       { id: 'dashboard', label: 'Inicio', icon: 'dashboard' },
       { id: 'ventas', label: 'Ventas', icon: 'ventas' },
+      { id: 'transacciones', label: 'Transacciones', icon: 'receipt' },
       { id: 'productos', label: 'Productos', icon: 'productos' },
       { id: 'inventario', label: 'Inventario', icon: 'inventario' },
       { id: 'despachos', label: 'Despachos', icon: 'truck' },

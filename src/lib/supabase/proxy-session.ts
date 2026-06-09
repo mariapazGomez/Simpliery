@@ -5,8 +5,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-/** Rutas accesibles sin sesión. */
-const PUBLIC_PATHS = ['/login']
+/** Rutas accesibles sin sesión. (/auth/* = callback de OAuth, debe entrar sin sesión aún) */
+const PUBLIC_PATHS = ['/login', '/auth']
 
 function isPublic(path: string) {
   return PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + '/'))

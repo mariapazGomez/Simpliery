@@ -1,7 +1,7 @@
 'use client'
 
 // ---------- Clientes: analytics, import, export (portado de screen-clientes.jsx) ----------
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore, useMetrics, clientMetrics, buildSalesCSV } from '@/lib/store'
 import { fmtCLP, catColor } from '@/lib/format'
 import { Icon } from '@/components/icon'
@@ -697,6 +697,20 @@ export default function ClientesPage() {
   const [showExport, setShowExport] = useState(false)
   const cats = ['Todos', 'VIP', 'Frecuente', 'Regular', 'En riesgo', 'Nuevo']
   const enriched: EnrichedCliente[] = useMemo(() => clientes.map((c) => ({ ...c, ...clientMetrics(c) })), [clientes])
+
+  // Deep-link desde Transacciones: ?cliente=<nombre> abre la ficha de ese cliente.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const param = new URLSearchParams(window.location.search).get('cliente')
+    if (!param) return
+    const nombre = decodeURIComponent(param)
+    const found = enriched.find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())
+    setQ(nombre)
+    if (found) setDetail(found)
+    window.history.replaceState(null, '', '/clientes')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   let list = enriched.filter((c) => (filtro === 'Todos' || c.categoria === filtro) && c.nombre.toLowerCase().includes(q.toLowerCase()))
   list = [...list].sort((a, b) => {
     const av = getSortVal(a, sort.k)

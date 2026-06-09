@@ -224,6 +224,8 @@ interface StoreValue {
   addClientes: (arr: Cliente[]) => void
   updateCliente: (id: string, patch: Partial<Cliente>) => void
   saldarDeuda: (saleId: string, montoPagado: number, metodo?: string) => void
+  deleteSale: (saleId: string) => void
+  updateSale: (saleId: string, patch: Partial<Sale>) => void
   categorias: string[]
   addCategoria: (name: string) => void
   renameCategoria: (oldName: string, nuevo: string) => void
@@ -297,6 +299,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [sales, setSales, setProducts, setMovements, toast],
   )
+
+  const deleteSale = useCallback((saleId: string) => {
+    const sale = sales.find((s) => s.id === saleId)
+    if (!sale) return
+    // Repone el stock que esta venta había descontado (la venta "no ocurrió").
+    setProducts((ps) =>
+      ps.map((p) => {
+        const simpleIt = sale.items.find((i) => i.productId === p.id && !i.formatId)
+        const fmtItems = sale.items.filter((i) => i.productId === p.id && i.formatId)
+        if (!simpleIt && !fmtItems.length) return p
+        const simpleAdd = simpleIt ? simpleIt.qty : 0
+        const fmtAdd = fmtItems.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
+        const soldBack = simpleAdd + fmtItems.reduce((a, i) => a + i.qty, 0)
+        return { ...p, stock: p.stock + simpleAdd + fmtAdd, sold: Math.max(0, p.sold - soldBack) }
+      }),
+    )
+    setMovements((mv) => [
+      { id: 'mv' + Date.now(), date: new Date(), product: sale.items.length > 1 ? `${sale.items.length} productos` : sale.items[0]?.name ?? '', type: 'Ajuste', qty: sale.items.reduce((a, i) => a + i.qty, 0), note: 'Anulación boleta ' + sale.boleta },
+      ...mv,
+    ])
+    setSales((ss) => ss.filter((s) => s.id !== saleId))
+    toast('Transacción eliminada · stock repuesto')
+  }, [sales, setProducts, setMovements, setSales, toast])
+
+  const updateSale = useCallback((saleId: string, patch: Partial<Sale>) => {
+    setSales((ss) => ss.map((s) => (s.id === saleId ? { ...s, ...patch } : s)))
+    toast('Transacción actualizada')
+  }, [setSales, toast])
 
   const addProduct = useCallback((p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => {
     setProducts((ps) => {
@@ -377,6 +407,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     negocioId,
     products, sales, movements, settings, setSettings, toast, clientes,
     registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+    deleteSale, updateSale,
     categorias, addCategoria, renameCategoria, deleteCategoria,
   }
   return (
