@@ -63,10 +63,10 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
 
       <div className="sidebar-foot">
         <div className="user-chip">
-          <div className="avatar">M</div>
+          <div className="avatar">{(settings.ownerName?.trim() || settings.business || 'U')[0].toUpperCase()}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Marta Soto</div>
-            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>Dueña</div>
+            <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{settings.ownerName?.trim() || 'Mi cuenta'}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{settings.ownerRole?.trim() || 'Dueño/a'}</div>
           </div>
           <button onClick={() => { go('config'); setOpen(false) }} title="Configuración" style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
             <Icon name="config" size={15} />

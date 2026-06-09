@@ -15,7 +15,7 @@ import type {
 export const TODAY = new Date(2026, 5, 6) // 6 jun 2026
 
 const DEFAULT_SETTINGS: Settings = {
-  business: 'Mi negocio', currency: 'Peso chileno (CLP)',
+  business: 'Mi negocio', ownerName: '', ownerRole: 'Dueño/a', currency: 'Peso chileno (CLP)',
   methods: ['Efectivo', 'Transferencia', 'Tarjeta'], minStockDefault: 5, minMargin: 25,
 }
 

@@ -80,6 +80,8 @@ export default function ConfiguracionPage() {
           <div className="card-pad grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Field label="Nombre del negocio"><input className="input" value={f.business} onChange={(e) => set('business', e.target.value)} /></Field>
             <Field label="Moneda"><select className="select" value={f.currency} onChange={(e) => set('currency', e.target.value)}><option>Peso chileno (CLP)</option><option>Peso argentino (ARS)</option><option>Sol peruano (PEN)</option></select></Field>
+            <Field label="Tu nombre"><input className="input" value={f.ownerName || ''} onChange={(e) => set('ownerName', e.target.value)} placeholder="Ej: María González" /></Field>
+            <Field label="Tu cargo"><input className="input" value={f.ownerRole || ''} onChange={(e) => set('ownerRole', e.target.value)} placeholder="Ej: Dueña" /></Field>
           </div>
         </section>
 

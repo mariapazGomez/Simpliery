@@ -101,6 +101,8 @@ export interface Movement {
 
 export interface Settings {
   business: string
+  ownerName?: string
+  ownerRole?: string
   currency: string
   methods: string[]
   minStockDefault: number

@@ -1,8 +1,10 @@
 'use client'
 
 // ---------- Usuarios (portado de screen-usuarios.jsx) ----------
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
+import { createClient } from '@/lib/supabase/client'
+import type { Settings } from '@/types'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, Field } from '@/components/ui'
 
@@ -65,12 +67,20 @@ interface Usuario {
   custom?: string[]
 }
 
-const SEED_USERS: Usuario[] = [
-  { id: 'u1', nombre: 'Marta Soto', email: 'marta@emporiodonamarta.cl', rol: 'admin', activo: true, avatar: 'M', ultimoAcceso: new Date(2026, 5, 8, 14, 32), accionesDia: 23 },
-  { id: 'u2', nombre: 'Camila Rojas', email: 'camila@gmail.com', rol: 'vendedor', activo: true, avatar: 'C', ultimoAcceso: new Date(2026, 5, 8, 11, 15), accionesDia: 14 },
-  { id: 'u3', nombre: 'Diego Muñoz', email: 'diego@gmail.com', rol: 'inventario', activo: true, avatar: 'D', ultimoAcceso: new Date(2026, 5, 7, 18, 20), accionesDia: 8 },
-  { id: 'u4', nombre: 'Javiera Pérez', email: 'javiera@gmail.com', rol: 'finanzas', activo: false, avatar: 'J', ultimoAcceso: new Date(2026, 5, 6, 9, 10), accionesDia: 0 },
-]
+/** El dueño de la cuenta (tú): su nombre sale de Configuración y el correo de la sesión. */
+function makeOwner(settings: Settings, email: string): Usuario {
+  const nombre = settings.ownerName?.trim() || 'Tú'
+  return {
+    id: 'owner',
+    nombre,
+    email: email || '—',
+    rol: 'admin',
+    activo: true,
+    avatar: (settings.ownerName?.trim() || settings.business || 'U')[0].toUpperCase(),
+    ultimoAcceso: new Date(),
+    accionesDia: 0,
+  }
+}
 
 function RolBadge({ rol }: { rol: string }) {
   const r = ROLES[rol] || ROLES.lectura
@@ -178,10 +188,23 @@ function EditRolModal({ usuario, onClose, onSave }: { usuario: Usuario; onClose:
 }
 
 export default function UsuariosPage() {
-  const [users, setUsers] = useState<Usuario[]>(SEED_USERS)
+  const { settings } = useStore()
+  const [email, setEmail] = useState('')
+  const [users, setUsers] = useState<Usuario[]>(() => [makeOwner(settings, '')])
   const [showInvite, setShowInvite] = useState(false)
   const [editUser, setEditUser] = useState<Usuario | null>(null)
-  const { settings } = useStore()
+
+  // Trae el correo de la sesión actual.
+  useEffect(() => {
+    createClient()
+      .auth.getUser()
+      .then(({ data }: { data: { user: { email?: string | null } | null } }) => setEmail(data.user?.email || ''))
+  }, [])
+  // Mantiene la fila del dueño sincronizada con tu nombre (Configuración) y tu correo.
+  useEffect(() => {
+    setUsers((us) => us.map((u) => (u.id === 'owner' ? makeOwner(settings, email) : u)))
+  }, [settings, email])
+
   const saveUser = (id: string, patch: Partial<Usuario>) => setUsers((us) => us.map((u) => (u.id === id ? { ...u, ...patch } : u)))
   const toggleActive = (id: string) => setUsers((us) => us.map((u) => (u.id === id ? { ...u, activo: !u.activo } : u)))
 

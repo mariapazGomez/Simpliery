@@ -33,7 +33,7 @@ function formatWA(tel: string): string {
   const digits = tel.replace(/\D/g, '')
   return digits.startsWith('56') ? digits : '56' + digits.replace(/^0/, '')
 }
-function personalizeMsg(tpl: string, c: Cliente, negocio = 'Emporio Doña Marta'): string {
+function personalizeMsg(tpl: string, c: Cliente, negocio = 'tu negocio'): string {
   return tpl
     .replace(/{{nombre}}/g, c.nombre.split(' ')[0])
     .replace(/{{ciudad}}/g, c.ciudad)

@@ -45,7 +45,7 @@ export default function DashboardPage() {
     <div className="fade-in">
       <Onboarding />
       <PageHeader
-        title={`Hola, ${settings.business.split(' ')[0] === 'Emporio' ? 'Marta' : settings.business} 👋`}
+        title={`Hola, ${settings.ownerName?.trim() ? settings.ownerName.trim().split(' ')[0] : settings.business} 👋`}
         sub={`Resumen de hoy · ${TODAY.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}`}
       >
         <button
