@@ -8,6 +8,7 @@ import { useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, CatDot, MarginBadge } from '@/components/ui'
 import { Spark, Donut, BarList, ColumnChart } from '@/components/charts'
+import { Onboarding } from '@/components/onboarding'
 
 interface Alert {
   icon: string
@@ -42,6 +43,7 @@ export default function DashboardPage() {
 
   return (
     <div className="fade-in">
+      <Onboarding />
       <PageHeader
         title={`Hola, ${settings.business.split(' ')[0] === 'Emporio' ? 'Marta' : settings.business} 👋`}
         sub={`Resumen de hoy · ${TODAY.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}`}
