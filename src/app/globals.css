@@ -250,13 +250,12 @@ input,select,textarea{ font-family:inherit; }
   .scrim.show{ display:block; position:fixed; inset:0; background:rgba(43,38,32,0.34); z-index:39; }
   .hamburger{ display:grid; place-items:center; width:38px; height:38px; border-radius:10px; border:1px solid var(--line-2); background:var(--surface); }
   .topbar{ padding:13px 18px; }
-  .content{ padding:18px 18px 80px; }
+  .content{ padding:18px; }
   .search{ display:none; }
 }
 @media (max-width:760px){
   .content .grid{ grid-template-columns:1fr !important; }
   .ventas-grid > .card[style*="sticky"]{ position:static !important; }
-  .content{ padding-bottom:90px !important; }
 }
 
 /* ── Mobile bottom nav ── */
@@ -277,4 +276,3 @@ input,select,textarea{ font-family:inherit; }
 }
 .mobile-nav-btn.active{ color:var(--primary-700); background:var(--primary-tint); }
 .mobile-nav-btn .m-badge{ width:7px; height:7px; border-radius:50%; background:var(--danger); position:absolute; top:4px; right:4px; }
-@media (max-width:920px){ .mobile-nav{ display:grid; } }

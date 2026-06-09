@@ -9,7 +9,6 @@ import { FormatsProvider } from '@/lib/formats-store'
 import { PATH_TO_ID, TITLES, useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
 import { Sidebar } from '@/components/shell/sidebar'
-import { MobileNav } from '@/components/shell/mobile-nav'
 import { NotifDrawer } from '@/components/notif-drawer'
 import { GlobalSearch } from '@/components/global-search'
 
@@ -92,7 +91,6 @@ function AppShell({ children }: { children: ReactNode }) {
         </header>
         <div className="content">{children}</div>
       </div>
-      <MobileNav />
       <NotifDrawer open={notifOpen} onClose={() => setNotifOpen(false)} go={go} />
       {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} go={go} />}
     </div>
