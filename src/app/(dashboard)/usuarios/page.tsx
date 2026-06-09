@@ -285,7 +285,7 @@ export default function UsuariosPage() {
       <div style={{ marginTop: 14, padding: '13px 16px', background: 'var(--warn-tint)', borderRadius: 12, border: '1px solid var(--warn)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <Icon name="alert" size={15} style={{ color: 'oklch(0.50 0.10 70)', marginTop: 2, flexShrink: 0 }} />
         <div style={{ fontSize: 13, color: 'oklch(0.45 0.10 70)', fontWeight: 600 }}>
-          Los permisos se aplican tanto en la interfaz como en el servidor. Un vendedor no puede ver márgenes, costos ni finanzas aunque intente acceder directamente.
+          Los roles te ayudan a organizar a tu equipo. Por ahora son informativos: la separación de datos <strong>entre negocios</strong> sí está protegida en el servidor, pero el control de permisos por rol <strong>dentro</strong> de un mismo negocio se aplicará en una próxima versión.
         </div>
       </div>
 

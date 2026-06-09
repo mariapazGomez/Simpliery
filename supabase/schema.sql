@@ -121,10 +121,11 @@ alter table public.perfiles enable row level security;
 drop policy if exists perfiles_select on public.perfiles;
 create policy perfiles_select on public.perfiles
   for select using (id = auth.uid() or negocio_id = public.current_negocio_id());
+-- Cada usuario solo puede actualizar SU PROPIO perfil (no el de otros miembros).
 drop policy if exists perfiles_update on public.perfiles;
 create policy perfiles_update on public.perfiles
-  for update using (negocio_id = public.current_negocio_id())
-  with check (negocio_id = public.current_negocio_id());
+  for update using (id = auth.uid())
+  with check (id = auth.uid() and negocio_id = public.current_negocio_id());
 
 -- Tablas de colección + singletons: una política FOR ALL por negocio_id.
 do $$
