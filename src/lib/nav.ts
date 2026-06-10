@@ -94,14 +94,6 @@ export const NAV_GROUPS: { label: string; items: { id: string; label: string; ic
   },
 ]
 
-export const MOBILE_NAV: { id: string; label: string; icon: string; primary?: boolean }[] = [
-  { id: 'dashboard', label: 'Inicio', icon: 'dashboard' },
-  { id: 'ventas', label: 'Vender', icon: 'ventas', primary: true },
-  { id: 'inventario', label: 'Stock', icon: 'inventario' },
-  { id: 'clientes', label: 'Clientes', icon: 'clientes' },
-  { id: 'finanzas', label: 'Finanzas', icon: 'wallet' },
-]
-
 /** Hook que devuelve `go(idOrPath)`: navega como el `go` del prototipo. */
 export function useGo() {
   const router = useRouter()

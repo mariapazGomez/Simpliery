@@ -102,7 +102,7 @@ export default function UsuariosPage() {
     setMeId(user?.id || '')
     const { data: perfiles } = await supabase.from('perfiles').select('id,nombre,email,rol,activo')
     const { data: inv } = await supabase.from('invitaciones').select('id,email,rol,created_at').eq('estado', 'pendiente').order('created_at', { ascending: false })
-    setTeam(((perfiles as Perfil[]) || []).sort((a, b) => (a.id === user?.id ? -1 : 1)))
+    setTeam(((perfiles as Perfil[]) || []).sort((a, b) => (a.id === user?.id ? -1 : b.id === user?.id ? 1 : 0)))
     setInvites((inv as Invitacion[]) || [])
     setLoading(false)
   }, [])
