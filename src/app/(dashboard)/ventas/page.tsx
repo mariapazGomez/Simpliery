@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from 'react'
 import { useStore, useMetrics, clientMetrics, TODAY } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
-import { fmtCLP, fmtNum, fmtPct, catColor, stockState } from '@/lib/format'
+import { fmtCLP, fmtNum, fmtPct, catColor, stockState, precioDespachoDe, precioDespachoFormato } from '@/lib/format'
 import { puedeVerDinero } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
@@ -28,6 +28,8 @@ interface CartLine {
   baseName?: string
   displayFormat?: string
   originalPrice?: number
+  /** Precio LOCAL base (sin recargo despacho). Estable para recalcular al cambiar local↔despacho. */
+  basePrice?: number
   unit?: string
 }
 
@@ -467,6 +469,18 @@ export default function VentasPage() {
     }
   }
 
+  // Precio de una línea según el tipo: en despacho usa el precio fijo del producto
+  // (o la misma proporción local→despacho para los formatos/variantes).
+  const precioLinea = (
+    base: number,
+    prod: { price: number; precioDespacho?: number } | undefined,
+    esFormato: boolean,
+    t: 'local' | 'despacho',
+  ) => {
+    if (t !== 'despacho' || !prod) return base
+    return esFormato ? precioDespachoFormato(base, prod.price, prod.precioDespacho) : precioDespachoDe(base, prod.precioDespacho)
+  }
+
   const add = (p: ProductWithKg) => {
     // No permitir vender más de lo que hay en stock (evita descuadres al anular).
     const enCarro = cart.filter((i) => i.productId === p.id && !i.formatId).reduce((a, i) => a + i.qty, 0)
@@ -477,7 +491,8 @@ export default function VentasPage() {
     setCart((c) => {
       const e = c.find((i) => i.productId === p.id && !i.formatId)
       if (e) return c.map((i) => (i.productId === p.id && !i.formatId ? { ...i, qty: i.qty + 1 } : i))
-      return [...c, { productId: p.id, name: p.name, cat: p.cat, price: p.price, cost: p.cost, qty: 1 }]
+      const price = precioLinea(p.price, p, false, tipo)
+      return [...c, { productId: p.id, name: p.name, cat: p.cat, price, originalPrice: price, basePrice: p.price, cost: p.cost, qty: 1 }]
     })
   }
   const addFormat = (p: ProductWithKg, fmt: Format, qty: number) =>
@@ -486,8 +501,22 @@ export default function VentasPage() {
       const e = c.find((i) => i.productId === p.id && i.formatId === fmt.id)
       const itemCost = p.cost * fmt.qty
       if (e) return c.map((i) => (i.productId === p.id && i.formatId === fmt.id ? { ...i, qty: i.qty + qty } : i))
-      return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price: fmt.price, originalPrice: fmt.price, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
+      const price = precioLinea(fmt.price, p, true, tipo)
+      return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price, originalPrice: price, basePrice: fmt.price, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
     })
+
+  // Cambiar local↔despacho recalcula los precios del carrito al instante.
+  const applyTipo = (t: 'local' | 'despacho') => {
+    setTipo(t)
+    setCart((c) =>
+      c.map((i) => {
+        const prod = products.find((x) => x.id === i.productId)
+        const base = i.basePrice ?? i.originalPrice ?? i.price
+        const price = precioLinea(base, prod, !!i.formatId, t)
+        return { ...i, price, originalPrice: price }
+      }),
+    )
+  }
   const setQty = (id: number, fmt: string, d: number) => setCart((c) => c.map((i) => (i.productId === id && i.formatId === fmt ? { ...i, qty: Math.max(1, i.qty + d) } : i)))
   const setQtySimple = (id: number, d: number) =>
     setCart((c) =>
@@ -707,7 +736,7 @@ export default function VentasPage() {
               {([{ k: 'local', label: 'En local', icon: 'store' }, { k: 'despacho', label: 'Despacho', icon: 'truck' }] as const).map((t) => (
                 <button
                   key={t.k}
-                  onClick={() => { setTipo(t.k); setCliente(emptyCliente); if (t.k === 'despacho') setShowCliente(true) }}
+                  onClick={() => { applyTipo(t.k); setCliente(emptyCliente); if (t.k === 'despacho') setShowCliente(true) }}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 8px', border: '2px solid ' + (tipo === t.k ? 'var(--primary)' : 'var(--line)'), borderRadius: 12, background: tipo === t.k ? 'var(--primary-tint)' : 'var(--surface)', color: tipo === t.k ? 'var(--primary-700)' : 'var(--ink-2)', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   <Icon name={t.icon} size={17} />
@@ -715,6 +744,13 @@ export default function VentasPage() {
                 </button>
               ))}
             </div>
+
+            {tipo === 'despacho' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, fontSize: 12, color: 'var(--info)', fontWeight: 700 }}>
+                <Icon name="truck" size={13} />
+                Precios de despacho aplicados
+              </div>
+            )}
 
             {/* Cliente */}
             {!showCliente && tipo === 'local' ? (
@@ -821,7 +857,7 @@ export default function VentasPage() {
               <button
                 key={t.k}
                 onClick={() => {
-                  setTipo(t.k)
+                  applyTipo(t.k)
                   setCliente(emptyCliente)
                 }}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 8px', border: '2px solid ' + (tipo === t.k ? 'var(--primary)' : 'var(--line)'), borderRadius: 11, background: tipo === t.k ? 'var(--primary-tint)' : 'var(--surface)', color: tipo === t.k ? 'var(--primary-700)' : 'var(--ink-2)', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', transition: '.14s', fontFamily: 'inherit' }}
@@ -831,6 +867,12 @@ export default function VentasPage() {
               </button>
             ))}
           </div>
+          {tipo === 'despacho' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 12, color: 'var(--info)', fontWeight: 700 }}>
+              <Icon name="truck" size={13} />
+              Precios de despacho aplicados
+            </div>
+          )}
 
           {/* Cabecera del carrito */}
           <div className="card-head" style={{ border: 'none', paddingTop: 10, paddingBottom: 10 }}>

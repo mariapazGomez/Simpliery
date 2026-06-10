@@ -30,6 +30,21 @@ export function catColor(c: string): string {
   return CAT_COLORS[c] || 'var(--ink-3)'
 }
 
+/** Precio de despacho de un producto: el fijo si lo definió (>0), si no el precio local. */
+export function precioDespachoDe(localPrice: number, precioDespacho: number | null | undefined): number {
+  return typeof precioDespacho === 'number' && precioDespacho > 0 ? precioDespacho : localPrice
+}
+
+/** Precio de despacho de un FORMATO: aplica la misma proporción local→despacho del producto base. */
+export function precioDespachoFormato(
+  fmtPrice: number,
+  localPrice: number,
+  precioDespacho: number | null | undefined,
+): number {
+  if (!(typeof precioDespacho === 'number' && precioDespacho > 0) || localPrice <= 0) return fmtPrice
+  return Math.round((fmtPrice * (precioDespacho / localPrice)) / 10) * 10
+}
+
 export function stockState(p: Pick<Product, 'stock' | 'min'>): StockState {
   if (p.stock <= 0) return 'sin'
   if (p.stock <= p.min) return 'bajo'

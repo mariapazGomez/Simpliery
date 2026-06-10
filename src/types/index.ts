@@ -18,6 +18,8 @@ export interface Product {
   photo?: string
   /** Equivalencia en kg por unidad (para formatos a granel). */
   kgPerUnit?: number
+  /** Precio fijo para venta por despacho. Si no se define (o 0), usa el precio local. */
+  precioDespacho?: number
 }
 
 export interface SaleItem {

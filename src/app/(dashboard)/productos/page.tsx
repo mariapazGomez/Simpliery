@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { useStore } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
-import { fmtCLP, fmtNum, fmtPct } from '@/lib/format'
+import { fmtCLP, fmtNum, fmtPct, precioDespachoDe } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInput, Modal } from '@/components/ui'
 import { FormatManagerModal } from '@/components/formatos'
@@ -28,6 +28,8 @@ interface FormState {
   stock: string
   min: string
   photo?: string
+  /** Precio fijo de despacho para ESTE producto. Vacío = mismo precio que en local. */
+  precioDespacho: number | ''
 }
 
 const UNIT_OPTIONS = ['Unidad', 'kg', 'gramo', 'litro', 'mililitro', 'caja', 'paquete']
@@ -155,8 +157,8 @@ function ProductForm({ initial, onSave, onClose }: { initial?: ProductWithExtras
   const { productHasFormats } = useFormats()
   const [f, setF] = useState<FormState>(
     initial
-      ? { name: initial.name, cat: initial.cat, unit: initial.unit, cost: initial.cost, price: initial.price, stock: String(initial.stock), min: String(initial.min), photo: initial.photo }
-      : { name: '', cat: categorias[0] || 'Otros', unit: 'Unidad', cost: '', price: '', stock: '', min: String(settings.minStockDefault) },
+      ? { name: initial.name, cat: initial.cat, unit: initial.unit, cost: initial.cost, price: initial.price, stock: String(initial.stock), min: String(initial.min), photo: initial.photo, precioDespacho: initial.precioDespacho || '' }
+      : { name: '', cat: categorias[0] || 'Otros', unit: 'Unidad', cost: '', price: '', stock: '', min: String(settings.minStockDefault), precioDespacho: '' },
   )
   const [pendingVariants, setPendingVariants] = useState<PendingVariant[]>([])
   const [showVariants, setShowVariants] = useState(!!(initial && productHasFormats(initial.id)))
@@ -168,8 +170,14 @@ function ProductForm({ initial, onSave, onClose }: { initial?: ProductWithExtras
   const valid = !!f.name.trim() && price > 0
   const low = marginPct < settings.minMargin
 
+  // Precio de despacho: fijo si lo definió (>0), si no el mismo precio local.
+  const dInput = f.precioDespacho === '' ? undefined : Math.max(0, +f.precioDespacho || 0)
+  const dPrice = precioDespachoDe(price, dInput)
+  const dSugerido = price > 0 ? Math.round((price * 1.1) / 10) * 10 : 0 // atajo +10%
+  const dExtra = dInput && dInput > 0 ? dInput - price : 0
+
   const handleSave = () => {
-    onSave({ name: f.name.trim(), cat: f.cat, unit: f.unit, cost, price, stock: +f.stock || 0, min: +f.min || 0, photo: f.photo }, pendingVariants)
+    onSave({ name: f.name.trim(), cat: f.cat, unit: f.unit, cost, price, stock: +f.stock || 0, min: +f.min || 0, photo: f.photo, precioDespacho: dInput && dInput > 0 ? dInput : undefined }, pendingVariants)
     onClose()
   }
 
@@ -284,6 +292,27 @@ function ProductForm({ initial, onSave, onClose }: { initial?: ProductWithExtras
             Bajo el mínimo recomendado ({settings.minMargin}%)
           </div>
         )}
+
+        {/* ── Precio fijo de despacho (opcional, por bencina/personal) ── */}
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', alignItems: 'start' }}>
+          <Field label="Precio despacho (opcional)" hint="Vacío = mismo precio que en local">
+            <MoneyInput value={f.precioDespacho} onChange={(v) => set('precioDespacho', v)} />
+            {price > 0 && (
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, marginTop: 6, padding: '5px 10px' }} onClick={() => set('precioDespacho', dSugerido)}>
+                <Icon name="truck" size={12} />
+                Sugerir +10% ({fmtCLP(dSugerido)})
+              </button>
+            )}
+          </Field>
+          <div className="card" style={{ background: 'var(--info-tint)', border: 'none', padding: '12px 14px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--info)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="truck" size={13} />
+              Precio en despacho
+            </div>
+            <div className="tnum" style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink)', marginTop: 2 }}>{price > 0 ? fmtCLP(dPrice) : '—'}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{price <= 0 ? 'Ingresa el precio base' : dExtra > 0 ? `${fmtCLP(dExtra)} más que en local` : 'Igual que en local'}</div>
+          </div>
+        </div>
 
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <Field label={`Stock inicial (${f.unit || 'unidades'})`}>

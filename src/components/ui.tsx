@@ -39,7 +39,7 @@ export function Metric({
         )}
       </div>
       <div>
-        <div className="tnum" style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.025em', lineHeight: 1.05 }}>{value}</div>
+        <div className="tnum" style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 28, fontWeight: 600, letterSpacing: '-0.01em', lineHeight: 1.05 }}>{value}</div>
         <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600, marginTop: 3 }}>{label}</div>
         {sub && <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600, marginTop: 5 }}>{sub}</div>}
       </div>
@@ -51,7 +51,7 @@ export function PageHeader({ title, sub, children }: { title: ReactNode; sub?: R
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 22 }}>
       <div>
-        <h2 style={{ margin: 0, fontSize: 23, fontWeight: 800, letterSpacing: '-0.025em' }}>{title}</h2>
+        <h2 className="page-title" style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em' }}>{title}</h2>
         {sub && <p style={{ margin: '5px 0 0', color: 'var(--ink-3)', fontSize: 14, fontWeight: 600 }}>{sub}</p>}
       </div>
       {children && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>{children}</div>}
@@ -180,8 +180,8 @@ export function Mini({ label, value, tone, style }: { label: ReactNode; value: R
   const c = tone === 'sin' ? 'var(--danger)' : tone === 'bajo' ? 'oklch(0.50 0.10 70)' : tone === 'ok' ? 'var(--primary-700)' : 'var(--ink)'
   return (
     <div className="card" style={{ flex: 1, padding: '11px 12px', textAlign: 'center', border: '1px solid var(--line)', ...style }}>
-      <div className="tnum" style={{ fontSize: 22, fontWeight: 800, color: c }}>{value}</div>
-      <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 700 }}>{label}</div>
+      <div className="tnum" style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 23, fontWeight: 600, color: c }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 700 }}>{label}</div>
     </div>
   )
 }

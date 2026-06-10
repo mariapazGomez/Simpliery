@@ -11,15 +11,15 @@
   --color-surface-3: #FBF7EF;
   --color-ink: #2B2620;
   --color-ink-2: #6E675D;
-  --color-ink-3: #9A9388;
+  --color-ink-3: #7C7568;
   --color-line: #ECE5D8;
   --color-line-2: #E2D9C8;
-  --color-primary: oklch(0.58 0.045 145);
-  --color-primary-700: oklch(0.50 0.05 145);
+  --color-primary: oklch(0.53 0.062 145);
+  --color-primary-700: oklch(0.46 0.066 145);
   --color-primary-tint: oklch(0.95 0.025 145);
   --color-terra: oklch(0.68 0.09 55);
   --color-terra-700: oklch(0.60 0.10 50);
-  --color-ok: oklch(0.58 0.045 145);
+  --color-ok: oklch(0.53 0.062 145);
   --color-warn: oklch(0.70 0.10 75);
   --color-danger: oklch(0.58 0.13 35);
   --color-info: oklch(0.60 0.07 240);
@@ -36,16 +36,16 @@
   /* Text */
   --ink:       #2B2620;
   --ink-2:     #6E675D;
-  --ink-3:     #9A9388;
+  --ink-3:     #7C7568;
 
   /* Lines */
   --line:      #ECE5D8;
   --line-2:    #E2D9C8;
 
   /* Sage / olive primary */
-  --primary:      oklch(0.58 0.045 145);
-  --primary-700:  oklch(0.50 0.05 145);
-  --primary-600:  oklch(0.55 0.05 145);
+  --primary:      oklch(0.53 0.062 145);
+  --primary-700:  oklch(0.46 0.066 145);
+  --primary-600:  oklch(0.50 0.064 145);
   --primary-tint: oklch(0.95 0.025 145);
   --primary-tint2:oklch(0.90 0.035 145);
 
@@ -55,7 +55,7 @@
   --terra-tint: oklch(0.95 0.03 60);
 
   /* Status */
-  --ok:        oklch(0.58 0.045 145);
+  --ok:        oklch(0.53 0.062 145);
   --ok-tint:   oklch(0.94 0.03 145);
   --warn:      oklch(0.70 0.10 75);
   --warn-tint: oklch(0.95 0.05 80);
@@ -103,6 +103,12 @@ body{
 button{ font-family:inherit; cursor:pointer; }
 input,select,textarea{ font-family:inherit; }
 .tnum{ font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
+
+/* Fuente display (Fraunces): solo títulos y números destacados — da elegancia y jerarquía. */
+.font-display{ font-family:var(--font-display, Georgia, 'Times New Roman', serif); }
+.brand-name, .topbar h1, .card-title, .page-title{
+  font-family:var(--font-display, Georgia, 'Times New Roman', serif);
+}
 
 /* Scrollbars */
 *::-webkit-scrollbar{ width:11px; height:11px; }
@@ -195,7 +201,7 @@ input,select,textarea{ font-family:inherit; }
 /* ---------- Inputs ---------- */
 .field{ display:flex; flex-direction:column; gap:6px; }
 .field label{ font-size:13px; font-weight:700; color:var(--ink-2); }
-.field .hint{ font-size:11.5px; color:var(--ink-3); font-weight:500; }
+.field .hint{ font-size:12px; color:var(--ink-3); font-weight:500; }
 .input, .select{
   background:var(--surface); border:1px solid var(--line-2); border-radius:10px; padding:11px 13px;
   font-size:14.5px; color:var(--ink); outline:none; transition:.14s; width:100%;
@@ -210,7 +216,7 @@ input,select,textarea{ font-family:inherit; }
 
 /* ---------- Table ---------- */
 .tbl{ width:100%; border-collapse:collapse; }
-.tbl th{ text-align:left; font-size:11.5px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-3); padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
+.tbl th{ text-align:left; font-size:12px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:var(--ink-3); padding:11px 16px; border-bottom:1px solid var(--line); white-space:nowrap; }
 .tbl td{ padding:13px 16px; border-bottom:1px solid var(--line); font-size:14px; }
 .tbl tbody tr{ transition:background .12s; }
 .tbl tbody tr:hover{ background:var(--surface-3); }
