@@ -1,8 +1,8 @@
 'use client'
 
 // ---------- Reportes (portado de screen-reportes.jsx) ----------
-import { useState } from 'react'
-import { useStore, useMetrics } from '@/lib/store'
+import { useState, useMemo } from 'react'
+import { useStore, useMetrics, TODAY } from '@/lib/store'
 import { fmtCLP, fmtNum, fmtPct, catColor } from '@/lib/format'
 import { exportVentasCSV, exportProductosCSV } from '@/lib/exports'
 import { Icon } from '@/components/icon'
@@ -95,22 +95,93 @@ export default function ReportesPage() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const ranges: [string, string][] = [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['custom', 'Personalizado']]
-  const factor = range === 'hoy' ? 0.04 : range === 'semana' ? 0.25 : range === 'custom' ? 1.4 : 1
 
-  // Canal-filtered metrics
-  const cData = range === 'hoy' ? m.canalHoy : m.canalMes
-  const local = cData.local
-  const despacho = cData.despacho
+  // Filtro real de ventas por fecha según el rango elegido (reemplaza el "factor" mágico).
+  // Las métricas (canales, categorías, métodos de pago) se calculan sobre el subconjunto filtrado.
+  const { localF, despF, fCats, fPay, fTopProducts } = useMemo(() => {
+    // Ventana de fechas [from, to]
+    const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+    const endOfDay = (d: Date) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x }
+    let from: Date
+    let to = endOfDay(TODAY)
+    if (range === 'hoy') {
+      from = startOfDay(TODAY)
+    } else if (range === 'semana') {
+      from = startOfDay(TODAY); from.setDate(from.getDate() - 6)
+    } else if (range === 'custom' && customFrom && customTo) {
+      from = startOfDay(new Date(customFrom + 'T00:00:00'))
+      to = endOfDay(new Date(customTo + 'T00:00:00'))
+    } else {
+      // 'mes' (o custom sin fechas): desde el primer día del mes actual
+      from = startOfDay(new Date(TODAY.getFullYear(), TODAY.getMonth(), 1))
+    }
+    const inRange = sales.filter((s) => { const d = new Date(s.date); return d >= from && d <= to })
+
+    const calc = (arr: typeof inRange): CanalData => {
+      const total = arr.reduce((a, s) => a + s.total, 0)
+      const cost = arr.reduce((a, s) => a + s.cost, 0)
+      const profit = arr.reduce((a, s) => a + s.profit, 0)
+      const count = arr.length
+      return { total, cost, profit, count, margin: total ? (profit / total) * 100 : 0, ticket: count ? total / count : 0 }
+    }
+    const localF = calc(inRange.filter((s) => (s.tipo || 'local') === 'local'))
+    const despF = calc(inRange.filter((s) => s.tipo === 'despacho'))
+
+    // Categorías a partir de los items de las ventas filtradas
+    const byCat: Record<string, { cat: string; revenue: number; cost: number; profit: number; units: number }> = {}
+    for (const s of inRange) {
+      for (const it of s.items) {
+        const c = byCat[it.cat] || (byCat[it.cat] = { cat: it.cat, revenue: 0, cost: 0, profit: 0, units: 0 })
+        c.revenue += it.price * it.qty
+        c.cost += it.cost * it.qty
+        c.profit += (it.price - it.cost) * it.qty
+        c.units += it.qty
+      }
+    }
+    const totRev = Object.values(byCat).reduce((a, c) => a + c.revenue, 0)
+    const fCats = Object.values(byCat)
+      .map((c) => ({ ...c, marginPct: c.revenue ? (c.profit / c.revenue) * 100 : 0, color: catColor(c.cat), share: totRev ? (c.revenue / totRev) * 100 : 0 }))
+      .sort((a, b) => b.revenue - a.revenue)
+
+    // Productos más vendidos (por unidades) en el período
+    const byProd: Record<string, { name: string; cat: string; sold: number; price: number }> = {}
+    for (const s of inRange) {
+      for (const it of s.items) {
+        const k = it.productId + '|' + it.name
+        const p = byProd[k] || (byProd[k] = { name: it.name, cat: it.cat, sold: 0, price: it.price })
+        p.sold += it.qty
+      }
+    }
+    const fTopProducts = Object.values(byProd).sort((a, b) => b.sold - a.sold).slice(0, 6)
+
+    // Métodos de pago en el período (caja recibida: contado el día de venta, crédito por abonos)
+    const fPay: Record<string, number> = {}
+    for (const s of inRange) {
+      if (s.credito) continue // el crédito entra a caja vía abonos, no como venta
+      fPay[s.method] = (fPay[s.method] || 0) + s.total
+    }
+    for (const s of sales) {
+      if (!s.credito) continue
+      for (const p of s.pagos || []) {
+        const pf = new Date(p.fecha)
+        if (pf >= from && pf <= to) {
+          const metodo = p.metodo || 'Efectivo'
+          fPay[metodo] = (fPay[metodo] || 0) + p.monto
+        }
+      }
+    }
+
+    return { localF, despF, fCats, fPay, fTopProducts }
+  }, [sales, range, customFrom, customTo])
+
   const totalUnificado = {
-    total: (local.total + despacho.total) * factor,
-    cost: (local.cost + despacho.cost) * factor,
-    profit: (local.profit + despacho.profit) * factor,
-    count: local.count + despacho.count,
-    margin: local.total + despacho.total > 0 ? ((local.profit + despacho.profit) / (local.total + despacho.total)) * 100 : 0,
-    ticket: local.count + despacho.count > 0 ? (local.total + despacho.total) / (local.count + despacho.count) : 0,
+    total: localF.total + despF.total,
+    cost: localF.cost + despF.cost,
+    profit: localF.profit + despF.profit,
+    count: localF.count + despF.count,
+    margin: localF.total + despF.total > 0 ? ((localF.profit + despF.profit) / (localF.total + despF.total)) * 100 : 0,
+    ticket: localF.count + despF.count > 0 ? (localF.total + despF.total) / (localF.count + despF.count) : 0,
   }
-  const localF: CanalData = { total: local.total * factor, cost: local.cost * factor, profit: local.profit * factor, count: local.count, margin: local.margin, ticket: local.ticket }
-  const despF: CanalData = { total: despacho.total * factor, cost: despacho.cost * factor, profit: despacho.profit * factor, count: despacho.count, margin: despacho.margin, ticket: despacho.ticket }
 
   // Active view data
   const activeLocal = canal === 'despacho' ? { total: 0, cost: 0, profit: 0 } : localF
@@ -119,7 +190,7 @@ export default function ReportesPage() {
   const cost = activeLocal.cost + activeDesp.cost
   const profit = activeLocal.profit + activeDesp.profit
   const payColors: Record<string, string> = { Efectivo: 'var(--primary)', Tarjeta: 'var(--terra)', Transferencia: 'var(--info)' }
-  const payTotal = Object.values(m.pay).reduce((a, b) => a + b, 0) || 1
+  const payTotal = Object.values(fPay).reduce((a, b) => a + b, 0) || 1
 
   return (
     <div className="fade-in">
@@ -253,11 +324,12 @@ export default function ReportesPage() {
             <table className="tbl">
               <thead><tr><th>Categoría</th><th className="num">Vendido</th><th className="num">Ganancia</th><th className="num">Margen</th><th className="num">Participación</th></tr></thead>
               <tbody>
-                {m.cats.map((c) => (
+                {fCats.length === 0 && <tr><td colSpan={5} style={{ padding: '14px 16px', color: 'var(--ink-3)', fontSize: 13, fontWeight: 600 }}>Sin ventas en este período</td></tr>}
+                {fCats.map((c) => (
                   <tr key={c.cat}>
                     <td style={{ fontWeight: 700 }}><span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CatDot cat={c.cat} />{c.cat}</span></td>
-                    <td className="num tnum">{fmtCLP(c.revenue * factor)}</td>
-                    <td className="num tnum" style={{ fontWeight: 700, color: 'var(--primary-700)' }}>{fmtCLP(c.profit * factor)}</td>
+                    <td className="num tnum">{fmtCLP(c.revenue)}</td>
+                    <td className="num tnum" style={{ fontWeight: 700, color: 'var(--primary-700)' }}>{fmtCLP(c.profit)}</td>
                     <td className="num"><MarginBadge pct={c.marginPct} minMargin={settings.minMargin} /></td>
                     <td className="num tnum muted">{fmtPct(c.share)}</td>
                   </tr>
@@ -272,7 +344,7 @@ export default function ReportesPage() {
           <div className="card-head"><div style={{ flex: 1 }}><div className="card-title">Ingresos vs. costos</div><div className="card-sub">Comparación por categoría</div></div></div>
           <div className="card-pad">
             <ColumnChart height={190}
-              groups={m.cats.slice(0, 5).map((c) => ({ label: c.cat.split(' ')[0].slice(0, 5), revenue: c.revenue * factor, cost: c.cost * factor }))}
+              groups={fCats.slice(0, 5).map((c) => ({ label: c.cat.split(' ')[0].slice(0, 5), revenue: c.revenue, cost: c.cost }))}
               series={[{ key: 'revenue', label: 'Ingresos', color: 'var(--primary)' }, { key: 'cost', label: 'Costos', color: 'var(--terra)' }]} />
           </div>
         </div>
@@ -308,14 +380,14 @@ export default function ReportesPage() {
       <div className="grid" style={{ gridTemplateColumns: '1.4fr 1fr', marginTop: 18, alignItems: 'start' }}>
         <div className="card">
           <div className="card-head"><div style={{ flex: 1 }}><div className="card-title">Productos más vendidos</div><div className="card-sub">Lo que más sale del local</div></div></div>
-          <div className="card-pad"><BarList fmt={fmtNum} rows={m.topProducts.map((p) => ({ label: p.name, value: p.sold, color: catColor(p.cat) }))} /></div>
+          <div className="card-pad"><BarList fmt={fmtNum} rows={fTopProducts.map((p) => ({ label: p.name, value: p.sold, color: catColor(p.cat) }))} /></div>
         </div>
         <div className="card">
           <div className="card-head"><div style={{ flex: 1 }}><div className="card-title">Métodos de pago</div><div className="card-sub">Cómo te pagan</div></div></div>
           <div className="card-pad" style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-            <Donut size={130} thickness={20} data={Object.entries(m.pay).map(([k, v]) => ({ value: v, color: payColors[k] || 'var(--ink-3)' }))} centerValue={Object.keys(m.pay).length + ''} centerLabel="medios" />
+            <Donut size={130} thickness={20} data={Object.entries(fPay).map(([k, v]) => ({ value: v, color: payColors[k] || 'var(--ink-3)' }))} centerValue={Object.keys(fPay).length + ''} centerLabel="medios" />
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {Object.entries(m.pay).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+              {Object.entries(fPay).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, fontWeight: 700 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: payColors[k] }}></span>{k}</span>
                   <span className="tnum">{Math.round((v / payTotal) * 100)}%</span>

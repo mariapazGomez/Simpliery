@@ -79,7 +79,7 @@ export default function CierreCajaPage() {
       efectivoContado: +efectivoContado || totalEfect,
       tarjetaContado: +tarjetaContado || totalTarjeta,
       notas,
-      diferencia: (efectivoDif || 0) + (tarjetaDif || 0),
+      diferencia: (efectivoDif || 0) + (tarjetaDif || 0) + (transDif || 0),
     }
     setCierres((cs) => [cierre, ...cs.slice(0, 29)])
     setConfirmed(true)
@@ -263,16 +263,19 @@ export default function CierreCajaPage() {
                 </div>
               ))}
 
-              {/* Diferencia total */}
-              {(efectivoDif !== null || tarjetaDif !== null) && (
-                <div style={{ padding: '12px 14px', background: (efectivoDif || 0) + (tarjetaDif || 0) === 0 ? 'var(--ok-tint)' : (efectivoDif || 0) + (tarjetaDif || 0) > 0 ? 'var(--ok-tint)' : 'var(--danger-tint)', borderRadius: 11 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4 }}>Diferencia total</div>
-                  <div className="tnum" style={{ fontSize: 20, fontWeight: 800, color: (efectivoDif || 0) + (tarjetaDif || 0) >= 0 ? 'var(--primary-700)' : 'var(--danger)' }}>
-                    {(efectivoDif || 0) + (tarjetaDif || 0) >= 0 ? '+' : ''}
-                    {fmtCLP((efectivoDif || 0) + (tarjetaDif || 0))}
+              {/* Diferencia total — incluye efectivo, tarjeta y transferencias */}
+              {(efectivoDif !== null || tarjetaDif !== null || transDif !== null) && (() => {
+                const difTotal = (efectivoDif || 0) + (tarjetaDif || 0) + (transDif || 0)
+                return (
+                  <div style={{ padding: '12px 14px', background: difTotal >= 0 ? 'var(--ok-tint)' : 'var(--danger-tint)', borderRadius: 11 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4 }}>Diferencia total</div>
+                    <div className="tnum" style={{ fontSize: 20, fontWeight: 800, color: difTotal >= 0 ? 'var(--primary-700)' : 'var(--danger)' }}>
+                      {difTotal >= 0 ? '+' : ''}
+                      {fmtCLP(difTotal)}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               <Field label="Notas del cierre (opcional)">
                 <input className="input" value={notas} onChange={(e) => setNotas(e.target.value)} placeholder="Ej: faltaron $3.000 en efectivo, se revisará mañana" />

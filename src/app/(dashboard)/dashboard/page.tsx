@@ -21,12 +21,40 @@ interface Alert {
 export default function DashboardPage() {
   const go = useGo()
   const m = useMetrics()
-  const { settings, clientes } = useStore()
+  const { settings, clientes, sales } = useStore()
   const payTotal = Object.values(m.pay).reduce((a, b) => a + b, 0) || 1
   const payRows = Object.entries(m.pay).sort((a, b) => b[1] - a[1])
   const payColors: Record<string, string> = { Efectivo: 'var(--primary)', Tarjeta: 'var(--terra)', Transferencia: 'var(--info)' }
 
-  const trend = [380000, 420000, 365000, 510000, 470000, 540000, m.todayTotal || 490000]
+  // Serie real de ventas de los últimos 7 días (incluye hoy), agrupando por día.
+  const { trend, trendLabels, weekDelta } = useMemo(() => {
+    const dayKey = (d: Date) => d.toDateString()
+    // totales por día
+    const totalsByDay: Record<string, number> = {}
+    for (const s of sales) {
+      const k = dayKey(new Date(s.date))
+      totalsByDay[k] = (totalsByDay[k] || 0) + s.total
+    }
+    // últimos 7 días terminando en TODAY + sus etiquetas (Lun, Mar, ... / Hoy)
+    const series: number[] = []
+    const labels: string[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(TODAY)
+      d.setDate(d.getDate() - i)
+      series.push(totalsByDay[dayKey(d)] || 0)
+      labels.push(i === 0 ? 'Hoy' : d.toLocaleDateString('es-CL', { weekday: 'short' }))
+    }
+    // 7 días previos (días 8 a 14 atrás) para comparar
+    let prevWeek = 0
+    for (let i = 13; i >= 7; i--) {
+      const d = new Date(TODAY)
+      d.setDate(d.getDate() - i)
+      prevWeek += totalsByDay[dayKey(d)] || 0
+    }
+    const thisWeek = series.reduce((a, b) => a + b, 0)
+    const delta = prevWeek > 0 ? ((thisWeek - prevWeek) / prevWeek) * 100 : null
+    return { trend: series, trendLabels: labels, weekDelta: delta }
+  }, [sales])
 
   const proxClientes = useMemo(
     () => clientes.filter((c) => { const mm = clientMetrics(c); return mm.daysUntilNext != null && mm.daysUntilNext >= 0 && mm.daysUntilNext <= 3 }).length,
@@ -38,7 +66,7 @@ export default function DashboardPage() {
     { icon: 'box', tone: 'danger', text: `${m.lowStock.length} productos necesitan reposición`, cta: 'Ver inventario', to: 'inventario' },
     proxClientes > 0 ? { icon: 'clientes', tone: 'primary', text: `${proxClientes} clientes están próximos a recomprar esta semana`, cta: 'Ver segmentos', to: 'segmentos' } : null,
     lowM ? { icon: 'percent', tone: 'warn', text: `Margen de ${lowM.cat} bajo el ${settings.minMargin}% — revisa precios`, cta: 'Ver productos', to: 'productos' } : null,
-    m.topCat ? { icon: 'zap', tone: 'primary', text: `${m.topCat.cat} es tu categoría estrella del mes`, cta: 'Ver reportes', to: 'reportes' } : null,
+    m.topCat ? { icon: 'zap', tone: 'primary', text: `${m.topCat.cat} es tu categoría estrella`, cta: 'Ver reportes', to: 'reportes' } : null,
   ].filter((a): a is Alert => Boolean(a))
 
   return (
@@ -69,8 +97,8 @@ export default function DashboardPage() {
       </PageHeader>
 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', marginBottom: 18 }}>
-        <Metric icon="cash" label="Ventas de hoy" value={fmtCLP(m.todayTotal)} tone="primary" trend={{ dir: 'up', value: '12%' }} sub={`${m.boletas} boletas emitidas`} />
-        <Metric icon="trendUp" label="Ganancia de hoy" value={fmtCLP(m.todayProfit)} tone="terra" trend={{ dir: 'up', value: '8%' }} sub={`Costo ${fmtCLP(m.todayCost)}`} />
+        <Metric icon="cash" label="Ventas de hoy" value={fmtCLP(m.todayTotal)} tone="primary" sub={`${m.boletas} boletas emitidas`} />
+        <Metric icon="trendUp" label="Ganancia de hoy" value={fmtCLP(m.todayProfit)} tone="terra" sub={`Costo ${fmtCLP(m.todayCost)}`} />
         <Metric icon="percent" label="Margen promedio" value={fmtPct(m.avgMargin)} tone="info" sub="De las ventas de hoy" />
         <Metric icon="clientes" label="Próximos a comprar" value={proxClientes} tone="primary" sub="Esta semana · contactar" />
         <Metric icon="box" label="Stock bajo" value={m.lowStock.length} tone="danger" sub="Productos por reponer" />
@@ -105,17 +133,19 @@ export default function DashboardPage() {
             </div>
             <div className="tnum" style={{ textAlign: 'right' }}>
               <div style={{ fontWeight: 800, fontSize: 18 }}>{fmtCLP(trend.reduce((a, b) => a + b, 0))}</div>
-              <div style={{ fontSize: 12, color: 'var(--primary-700)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
-                <Icon name="trendUp" size={13} />
-                +14% vs. semana anterior
-              </div>
+              {weekDelta !== null && (
+                <div style={{ fontSize: 12, color: weekDelta >= 0 ? 'var(--primary-700)' : 'var(--danger)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                  <Icon name={weekDelta >= 0 ? 'trendUp' : 'trendDown'} size={13} />
+                  {weekDelta >= 0 ? '+' : ''}{Math.round(weekDelta)}% vs. semana anterior
+                </div>
+              )}
             </div>
           </div>
           <div className="card-pad">
             <Spark data={trend} w={560} h={120} />
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 700 }}>
-              {['Sáb', 'Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Hoy'].map((d) => (
-                <span key={d}>{d}</span>
+              {trendLabels.map((d, i) => (
+                <span key={i}>{d}</span>
               ))}
             </div>
           </div>
@@ -153,7 +183,7 @@ export default function DashboardPage() {
           <div className="card-head">
             <div style={{ flex: 1 }}>
               <div className="card-title">Ventas por categoría</div>
-              <div className="card-sub">Ingresos del mes</div>
+              <div className="card-sub">Ingresos acumulados</div>
             </div>
           </div>
           <div className="card-pad">
@@ -165,7 +195,7 @@ export default function DashboardPage() {
           <div className="card-head">
             <div style={{ flex: 1 }}>
               <div className="card-title">Ingresos, costos y ganancia</div>
-              <div className="card-sub">Top 4 categorías del mes</div>
+              <div className="card-sub">Top 4 categorías (acumulado)</div>
             </div>
           </div>
           <div className="card-pad">
@@ -186,7 +216,7 @@ export default function DashboardPage() {
         <div className="card-head">
           <div style={{ flex: 1 }}>
             <div className="card-title">Productos más vendidos</div>
-            <div className="card-sub">Por unidades este mes</div>
+            <div className="card-sub">Por unidades (acumulado)</div>
           </div>
           <button className="btn btn-ghost" onClick={() => go('reportes')}>
             Ver todos

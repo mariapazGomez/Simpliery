@@ -225,8 +225,25 @@ export function FinFlujo() {
   const { sales } = useStore()
   const mesInicio = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
   const ingMes = sales.filter((s) => s.date >= mesInicio)
+  // Entradas por método (caja real del mes):
+  // - Ventas de contado: el dinero entra el día de la venta → suma s.total a su método.
+  // - Ventas a crédito (fiado): la caja entra cuando el cliente ABONA → sumamos los pagos[]
+  //   por su fecha (dentro del mes) y por el método con que se recibió cada abono,
+  //   no el s.total el día de la venta.
   const pagos: Record<string, number> = { Efectivo: 0, Tarjeta: 0, Transferencia: 0 }
-  for (const s of ingMes) pagos[s.method] = (pagos[s.method] || 0) + s.total
+  for (const s of sales) {
+    if (s.credito) {
+      for (const p of s.pagos || []) {
+        const pf = new Date(p.fecha)
+        if (pf >= mesInicio) {
+          const metodo = p.metodo || 'Efectivo'
+          pagos[metodo] = (pagos[metodo] || 0) + p.monto
+        }
+      }
+    } else if (s.date >= mesInicio) {
+      pagos[s.method] = (pagos[s.method] || 0) + s.total
+    }
+  }
   const gastosMes = gastos.filter((g) => g.fecha >= mesInicio)
   const byCat: Record<string, number> = {}
   for (const g of gastosMes) byCat[g.cat] = (byCat[g.cat] || 0) + g.monto
@@ -284,8 +301,8 @@ export function FinFlujo() {
               size={140}
               thickness={22}
               data={Object.entries(pagos).filter(([, v]) => v > 0).map(([k, v]) => ({ value: v, color: k === 'Efectivo' ? 'var(--primary)' : k === 'Tarjeta' ? 'var(--terra)' : 'var(--info)' }))}
-              centerValue={fmtCLP(m.ingresosMes)}
-              centerLabel="Total"
+              centerValue={fmtCLP(Object.values(pagos).reduce((a, b) => a + b, 0))}
+              centerLabel="Caja recibida"
             />
             <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
               {Object.entries(pagos).filter(([, v]) => v > 0).map(([k, v]) => (

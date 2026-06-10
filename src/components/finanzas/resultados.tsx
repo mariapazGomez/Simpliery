@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // ---------- Finanzas: Estado de Resultados (portado de finanzas-resultados.jsx) ----------
 
@@ -53,11 +53,6 @@ export function FinResultados() {
   const resultadoOp = margenBruto - totalOp
   const utilidadEst = resultadoOp // simplified
   const pct = (v: number) => (ventasNetas ? (v / ventasNetas * 100).toFixed(1) + '%' : '—')
-  const var_prev = (v: number) => {
-    const diff = factor === 1.12 ? 0 : Math.round(v * 0.08 * (Math.random() > 0.5 ? 1 : -1))
-    const pct2 = v ? (diff / v) * 100 : 0
-    return { diff, pct2, up: diff >= 0 }
-  }
 
   const rows_ing: ResultRow[] = [
     { label: 'Ventas brutas', v: ventasBrutas, indent: 0, bold: false },
@@ -78,7 +73,6 @@ export function FinResultados() {
   ]
 
   function TRow({ row }: { row: ResultRow }) {
-    const vr = var_prev(Math.abs(row.v))
     const hl: Record<Highlight, string> = { primary: 'var(--primary-tint)', ok: 'var(--ok-tint)', warn: 'var(--warn-tint)', danger: 'var(--danger-tint)' }
     const fgHL: Record<Highlight, string> = { primary: 'var(--primary-700)', ok: 'var(--primary-700)', warn: 'oklch(0.50 0.10 70)', danger: 'var(--danger)' }
     const bg = row.highlight ? hl[row.highlight] : ''
@@ -94,9 +88,6 @@ export function FinResultados() {
           {row.v < 0 ? '-' : ''}{fmtCLP(Math.abs(row.v))}
         </td>
         <td className="num tnum" style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600 }}>{row.v !== 0 ? pct(Math.abs(row.v)) : '—'}</td>
-        <td className="num" style={{ fontSize: 12, color: vr.up ? 'var(--primary-700)' : 'var(--danger)', fontWeight: 700, whiteSpace: 'nowrap' }}>
-          {row.bold && vr.diff !== 0 ? <><Icon name={vr.up ? 'trendUp' : 'trendDown'} size={12} /> {Math.abs(Math.round(vr.pct2))}%</> : null}
-        </td>
       </tr>
     )
   }
@@ -104,7 +95,7 @@ export function FinResultados() {
   function GroupHeader({ label, sub }: { label: string; sub?: string }) {
     return (
       <tr style={{ background: 'var(--bg-2)' }}>
-        <td colSpan={4} style={{ padding: '10px 16px 6px', fontSize: 11, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+        <td colSpan={3} style={{ padding: '10px 16px 6px', fontSize: 11, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
           {label} {sub && <span style={{ fontWeight: 600, textTransform: 'none', letterSpacing: 0 }}>· {sub}</span>}
         </td>
       </tr>
@@ -149,19 +140,18 @@ export function FinResultados() {
               <th>Concepto</th>
               <th className="num">Monto</th>
               <th className="num">% ventas</th>
-              <th className="num">vs. mes ant.</th>
             </tr></thead>
             <tbody>
               <GroupHeader label="Ingresos" />
               {rows_ing.map((r, i) => <TRow key={'i' + i} row={r} />)}
-              <tr style={{ height: 8 }}><td colSpan={4} /></tr>
+              <tr style={{ height: 8 }}><td colSpan={3} /></tr>
               <GroupHeader label="Costos directos" />
               {rows_cos.map((r, i) => <TRow key={'c' + i} row={r} />)}
-              <tr style={{ height: 8 }}><td colSpan={4} /></tr>
+              <tr style={{ height: 8 }}><td colSpan={3} /></tr>
               <GroupHeader label="Gastos operacionales" sub={fmtCLP(totalOp)} />
-              {rows_op.length === 0 && <tr><td colSpan={4} style={{ padding: '14px 16px', color: 'var(--ink-3)', fontSize: 13, fontWeight: 600 }}>Sin gastos registrados para este período</td></tr>}
+              {rows_op.length === 0 && <tr><td colSpan={3} style={{ padding: '14px 16px', color: 'var(--ink-3)', fontSize: 13, fontWeight: 600 }}>Sin gastos registrados para este período</td></tr>}
               {rows_op.map((r, i) => <TRow key={'o' + i} row={r} />)}
-              <tr style={{ height: 8 }}><td colSpan={4} /></tr>
+              <tr style={{ height: 8 }}><td colSpan={3} /></tr>
               <GroupHeader label="Resultado final" />
               {rows_end.map((r, i) => <TRow key={'e' + i} row={r} />)}
             </tbody>
@@ -175,3 +165,4 @@ export function FinResultados() {
     </div>
   )
 }
+

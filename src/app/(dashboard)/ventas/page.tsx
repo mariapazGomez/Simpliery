@@ -510,11 +510,11 @@ export default function VentasPage() {
 
   const canConfirm = cart.length > 0 && (tipo === 'local' || cliente.nombre.trim().length > 0) && (method !== 'Crédito' || cliente.nombre.trim().length > 0)
 
-  const confirm = () => {
+  const confirm = async () => {
     if (!canConfirm) return
     const clienteRef = { nombre: cliente.nombre, ciudad: cliente.ciudad, telefono: cliente.numero, numero: cliente.numero, correo: cliente.correo, direccion: cliente.direccion }
     const items: SaleItem[] = cart.map((i) => ({ productId: i.productId, name: i.name, cat: i.cat, qty: i.qty, price: i.price, cost: i.cost, formatId: i.formatId, baseUnitsPerItem: i.baseUnitsPerItem }))
-    const sale = registrarVenta(items, method, { tipo, cliente: cliente.nombre.trim() ? clienteRef : null })
+    const sale = await registrarVenta(items, method, { tipo, cliente: cliente.nombre.trim() ? clienteRef : null })
     const confirmedSale: ConfirmedSale = { ...sale, descuento: discAmt > 0 ? { type: discount.type, value: +discount.value, amount: discAmt } : null }
     setConfirmed(confirmedSale)
     setCart([])

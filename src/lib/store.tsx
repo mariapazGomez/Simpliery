@@ -8,11 +8,14 @@ import { catColor, stockState, fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PRODUCTS, CATEGORIES } from '@/lib/data'
 import { usePerfil, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
+import { createClient } from '@/lib/supabase/client'
 import type {
   Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics,
 } from '@/types'
 
-export const TODAY = new Date(2026, 5, 6) // 6 jun 2026
+const supabase = createClient()
+
+export const TODAY = new Date() // fecha real actual
 
 const DEFAULT_SETTINGS: Settings = {
   business: 'Mi negocio', ownerName: '', ownerRole: 'Dueño/a', currency: 'Peso chileno (CLP)',
@@ -187,7 +190,7 @@ export function seedSales(products: Product[]): Sale[] {
     const creditoCliente = isCredito ? despachoClientes[Math.floor(rnd() * despachoClientes.length)] : null
     const metodoPago = isCredito ? 'Crédito' : methods[Math.floor(rnd() * methods.length)]
     sales.push({
-      id: 'b' + bol, boleta: bol++, date: new Date(2026, 5, 6, h, Math.floor(rnd() * 60)),
+      id: 'b' + bol, boleta: bol++, date: (() => { const d = new Date(TODAY); d.setHours(h, Math.floor(rnd() * 60), 0, 0); return d })(),
       items, method: metodoPago, total, cost, profit: total - cost,
       tipo: isDespacho ? 'despacho' : 'local', cliente: isDespacho ? cliente : isCredito ? creditoCliente : null,
       credito: isCredito, pagado: !isCredito, montoPendiente: isCredito ? total : 0, pagos: [],
@@ -217,7 +220,7 @@ interface StoreValue {
   setSettings: (updater: Settings | ((p: Settings) => Settings)) => void
   toast: (msg: string, icon?: string) => void
   clientes: Cliente[]
-  registrarVenta: (items: SaleItem[], method: string, extra?: RegistrarVentaExtra) => Sale
+  registrarVenta: (items: SaleItem[], method: string, extra?: RegistrarVentaExtra) => Promise<Sale>
   addProduct: (p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => void
   updateProduct: (id: number, patch: Partial<Product>) => void
   reponer: (id: number, qty: number) => void
@@ -268,10 +271,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [setSales, toast])
 
   const registrarVenta = useCallback(
-    (items: SaleItem[], method: string, extra: RegistrarVentaExtra = {}) => {
+    async (items: SaleItem[], method: string, extra: RegistrarVentaExtra = {}) => {
       const total = items.reduce((a, it) => a + it.price * it.qty, 0)
       const cost = items.reduce((a, it) => a + it.cost * it.qty, 0)
-      const boleta = Math.max(...sales.map((s) => s.boleta), 46209) + 1
+      // Folio atómico desde el servidor (evita boletas duplicadas con varios vendedores).
+      // Si falla la red, cae al cálculo local como respaldo.
+      let boleta: number
+      const { data: folio, error: folioErr } = await supabase.rpc('siguiente_boleta')
+      if (!folioErr && folio != null) boleta = Number(folio)
+      else boleta = sales.reduce((m, s) => Math.max(m, s.boleta), 46209) + 1
       const esCredito = method === 'Crédito'
       const sale: Sale = {
         id: 'b' + boleta, boleta, date: new Date(), items, method, total, cost, profit: total - cost,

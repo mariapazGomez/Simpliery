@@ -6,7 +6,7 @@
 import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react'
 import { useStore, useMetrics, TODAY, clientMetrics } from '@/lib/store'
 import { useCloudCollection } from '@/lib/supabase/cloud-state'
-import type { Gasto, NominaItem, MarketingItem, Meta, Credito, CreditoPago, Sale } from '@/types'
+import type { Gasto, NominaItem, MarketingItem, Meta, Credito, CreditoPago } from '@/types'
 
 export const GASTO_CATS = ['Arriendo', 'Sueldos', 'Marketing', 'Mercadería', 'Servicios', 'Transporte', 'Comisiones', 'Contabilidad', 'Mantención', 'Otros']
 export const GASTO_ICONS: Record<string, string> = {
@@ -52,27 +52,45 @@ export function seedNomina(): NominaItem[] {
 }
 
 export function seedMarketing(): MarketingItem[] {
+  // Fechas relativas a TODAY (días atrás) para que el ejemplo no quede en el pasado.
+  const dAgo = (daysAgo: number) => {
+    const x = new Date(TODAY)
+    x.setDate(x.getDate() - daysAgo)
+    return x
+  }
   return [
-    { id: 'mk1', campaign: 'Quesos artesanales junio', canal: 'Meta Ads', fecha: new Date(2026, 5, 1), monto: 85000, ventasGeneradas: 320000, clientesNuevos: 8, obs: 'Buen alcance, bajo CPC' },
-    { id: 'mk2', campaign: 'Frutos secos verano', canal: 'Instagram orgánico', fecha: new Date(2026, 5, 3), monto: 0, ventasGeneradas: 85000, clientesNuevos: 3, obs: 'Post viral' },
-    { id: 'mk3', campaign: 'Influencer @emporiochile', canal: 'Influencer', fecha: new Date(2026, 4, 28), monto: 60000, ventasGeneradas: 210000, clientesNuevos: 14, obs: 'Buen ROAS' },
-    { id: 'mk4', campaign: 'Volantes barrio', canal: 'Volantes', fecha: new Date(2026, 4, 15), monto: 15000, ventasGeneradas: 60000, clientesNuevos: 2, obs: 'Difícil medir' },
+    { id: 'mk1', campaign: 'Quesos artesanales', canal: 'Meta Ads', fecha: dAgo(7), monto: 85000, ventasGeneradas: 320000, clientesNuevos: 8, obs: 'Buen alcance, bajo CPC' },
+    { id: 'mk2', campaign: 'Frutos secos verano', canal: 'Instagram orgánico', fecha: dAgo(5), monto: 0, ventasGeneradas: 85000, clientesNuevos: 3, obs: 'Post viral' },
+    { id: 'mk3', campaign: 'Influencer @emporiochile', canal: 'Influencer', fecha: dAgo(11), monto: 60000, ventasGeneradas: 210000, clientesNuevos: 14, obs: 'Buen ROAS' },
+    { id: 'mk4', campaign: 'Volantes barrio', canal: 'Volantes', fecha: dAgo(24), monto: 15000, ventasGeneradas: 60000, clientesNuevos: 2, obs: 'Difícil medir' },
   ]
 }
 
 export function seedCreditos(): Credito[] {
+  // Fechas relativas a TODAY: próximas cuotas a futuro, pagos en el pasado reciente.
+  const dRel = (days: number) => {
+    const x = new Date(TODAY)
+    x.setDate(x.getDate() + days)
+    return x
+  }
   return [
-    { id: 'cr1', acreedor: 'Banco Estado', tipo: 'Préstamo bancario', montoOriginal: 8000000, saldo: 5200000, tasaAnual: 14.5, cuotaMensual: 280000, proximaCuota: new Date(2026, 5, 20), estado: 'vigente', notas: 'Crédito 36 meses, dic 2027', pagos: [{ monto: 280000, fecha: new Date(2026, 4, 20), nota: 'Cuota mayo', interes: 62833, amortizacion: 217167, saldoAntes: 5417167, saldoDespues: 5200000 }] },
-    { id: 'cr2', acreedor: 'Proveedor Quesos del Sur', tipo: 'Deuda proveedor', montoOriginal: 350000, saldo: 190000, tasaAnual: 0, cuotaMensual: 95000, proximaCuota: new Date(2026, 5, 15), estado: 'vigente', notas: 'Pago en 2 cuotas acordadas', pagos: [] },
-    { id: 'cr3', acreedor: 'Leasing refrigerador', tipo: 'Leasing', montoOriginal: 1200000, saldo: 780000, tasaAnual: 9.8, cuotaMensual: 38000, proximaCuota: new Date(2026, 5, 30), estado: 'al_dia', notas: '24 cuotas, vence ago 2027', pagos: [] },
-    { id: 'cr4', acreedor: 'Banco BBCI', tipo: 'Línea de crédito', montoOriginal: 2000000, saldo: 0, tasaAnual: 18, cuotaMensual: 0, proximaCuota: new Date(2026, 6, 1), estado: 'pagado', notas: 'Línea disponible, saldo pagado', pagos: [] },
+    { id: 'cr1', acreedor: 'Banco Estado', tipo: 'Préstamo bancario', montoOriginal: 8000000, saldo: 5200000, tasaAnual: 14.5, cuotaMensual: 280000, proximaCuota: dRel(11), estado: 'vigente', notas: 'Crédito 36 meses', pagos: [{ monto: 280000, fecha: dRel(-19), nota: 'Cuota mes anterior', interes: 62833, amortizacion: 217167, saldoAntes: 5417167, saldoDespues: 5200000 }] },
+    { id: 'cr2', acreedor: 'Proveedor Quesos del Sur', tipo: 'Deuda proveedor', montoOriginal: 350000, saldo: 190000, tasaAnual: 0, cuotaMensual: 95000, proximaCuota: dRel(6), estado: 'vigente', notas: 'Pago en 2 cuotas acordadas', pagos: [] },
+    { id: 'cr3', acreedor: 'Leasing refrigerador', tipo: 'Leasing', montoOriginal: 1200000, saldo: 780000, tasaAnual: 9.8, cuotaMensual: 38000, proximaCuota: dRel(21), estado: 'al_dia', notas: '24 cuotas', pagos: [] },
+    { id: 'cr4', acreedor: 'Banco BBCI', tipo: 'Línea de crédito', montoOriginal: 2000000, saldo: 0, tasaAnual: 18, cuotaMensual: 0, proximaCuota: dRel(23), estado: 'pagado', notas: 'Línea disponible, saldo pagado', pagos: [] },
   ]
 }
 
 export function seedMetas(): Meta[] {
+  // Fechas objetivo relativas a TODAY (meses a futuro) para que el ejemplo no quede vencido.
+  const mesesAdelante = (meses: number) => {
+    const x = new Date(TODAY)
+    x.setMonth(x.getMonth() + meses)
+    return x
+  }
   return [
-    { id: 'mt1', nombre: 'Reposición mercadería', monto: 5000000, fechaObj: new Date(2026, 8, 30), saldoActual: 1200000, aporteEsperado: 295000, prioridad: 'Alta', color: 'var(--primary)' },
-    { id: 'mt2', nombre: 'Comprar refrigerador nuevo', monto: 1200000, fechaObj: new Date(2026, 7, 31), saldoActual: 400000, aporteEsperado: 200000, prioridad: 'Media', color: 'var(--info)' },
+    { id: 'mt1', nombre: 'Reposición mercadería', monto: 5000000, fechaObj: mesesAdelante(3), saldoActual: 1200000, aporteEsperado: 295000, prioridad: 'Alta', color: 'var(--primary)' },
+    { id: 'mt2', nombre: 'Comprar refrigerador nuevo', monto: 1200000, fechaObj: mesesAdelante(2), saldoActual: 400000, aporteEsperado: 200000, prioridad: 'Media', color: 'var(--info)' },
   ]
 }
 
@@ -134,8 +152,6 @@ export function FinanzasProvider({ children }: { children: ReactNode }) {
 }
 
 /* ---------- Métricas derivadas de finanzas ---------- */
-type SaleExt = Sale & { balance?: number; clienteId?: string }
-
 export function useFinMetrics() {
   const { gastos, nomina, metas } = useFinanzas()
   const { sales, products, clientes } = useStore()
@@ -195,9 +211,10 @@ export function useFinMetrics() {
     const metaPrincipal = metas[0]
     const ventasNecesarias = metaPrincipal && margenProm > 0 ? (metaPrincipal.monto - metaPrincipal.saldoActual) / (margenProm / 100) : 0
 
-    const creditSales = sales as SaleExt[]
-    const totalDeuda = creditSales.filter((s) => s.method === 'Crédito' && (s.balance || 0) > 0).reduce((a, s) => a + (s.balance || 0), 0)
-    const clientesDeudoresN = new Set(creditSales.filter((s) => s.method === 'Crédito' && (s.balance || 0) > 0).map((s) => s.clienteId || s.id)).size
+    // Deuda real: ventas a crédito aún no pagadas. Monto = montoPendiente (cae a total si no existe).
+    const deudaPendiente = sales.filter((s) => s.credito && !s.pagado)
+    const totalDeuda = deudaPendiente.reduce((a, s) => a + (s.montoPendiente ?? s.total), 0)
+    const clientesDeudoresN = new Set(deudaPendiente.map((s) => s.cliente?.nombre).filter(Boolean)).size
 
     return {
       ingresosMes, costosMes, gananciaMes, margenProm, ventasPorDia, ventasPorSemana, totalGastosMes, gastosFijos,

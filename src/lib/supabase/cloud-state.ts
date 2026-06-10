@@ -5,6 +5,7 @@
 // sincroniza SOLO las filas modificadas (upsert/delete por id). Así el código de
 // las acciones del store no cambia. Cada entidad vive en una fila { id, negocio_id, data }.
 import { useCallback, useEffect, useState } from 'react'
+import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
@@ -91,6 +92,32 @@ export function useCloudCollection<T extends WithId>(
       setReady(true)
     })()
     return () => { alive = false }
+  }, [table, negocioId])
+
+  // Tiempo real: aplica los cambios de OTROS usuarios al estado local (sin
+  // re-sincronizarlos: usamos setState directo, no `set`, para no crear bucles).
+  useEffect(() => {
+    if (!negocioId) return
+    const channel = supabase
+      .channel(`rt:${table}:${negocioId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table, filter: `negocio_id=eq.${negocioId}` },
+        (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
+          setState((prev) => {
+            if (payload.eventType === 'DELETE') {
+              const oldId = (payload.old as { id?: string | number }).id
+              return oldId == null ? prev : prev.filter((r) => r.id !== oldId)
+            }
+            const raw = (payload.new as { data?: T }).data
+            if (raw == null) return prev
+            const row = reviveDates(raw) as T
+            return prev.some((r) => r.id === row.id) ? prev.map((r) => (r.id === row.id ? row : r)) : [row, ...prev]
+          })
+        },
+      )
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
   }, [table, negocioId])
 
   const set = useCallback(
