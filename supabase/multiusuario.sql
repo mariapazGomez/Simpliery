@@ -56,7 +56,7 @@ declare t text;
 begin
   foreach t in array array[
     'productos', 'ventas', 'clientes', 'movimientos', 'gastos', 'nomina',
-    'marketing', 'metas', 'creditos', 'proveedores', 'cierres', 'formatos',
+    'marketing', 'metas', 'creditos', 'proveedores', 'cierres', 'formatos', 'despachos',
     'configuracion', 'categorias', 'folios'
   ]
   loop

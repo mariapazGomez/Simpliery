@@ -204,3 +204,48 @@ export interface Format {
   qty: number
   price: number
 }
+
+// ---------- Despachos (entregas a domicilio + integración OptiRoute) ----------
+export type EstadoDespacho = 'pendiente' | 'en_ruta' | 'entregado' | 'no_entregado'
+
+/** Opciones de estado (para selects/chips). */
+export const DISPATCH_STATUSES: { value: EstadoDespacho; label: string; icon: string }[] = [
+  { value: 'pendiente', label: 'Pendiente', icon: 'clock' },
+  { value: 'en_ruta', label: 'En ruta', icon: 'truck' },
+  { value: 'entregado', label: 'Entregado', icon: 'check' },
+  { value: 'no_entregado', label: 'No entregado', icon: 'x' },
+]
+
+/** Colores por estado (var(--…) del design system). */
+export const DISPATCH_STATUS_COLOR: Record<EstadoDespacho, { bg: string; fg: string }> = {
+  pendiente: { bg: 'var(--warn-tint)', fg: 'oklch(0.50 0.10 70)' },
+  en_ruta: { bg: 'var(--info-tint)', fg: 'var(--info)' },
+  entregado: { bg: 'var(--ok-tint)', fg: 'var(--primary-700)' },
+  no_entregado: { bg: 'var(--danger-tint)', fg: 'var(--danger)' },
+}
+
+/** Despacho persistente (nace de una venta tipo 'despacho'; se envía a OptiRoute). */
+export interface Despacho {
+  id: string
+  saleId: string
+  boleta: number
+  fecha: Date
+  cliente: string
+  telefono: string
+  correo: string
+  direccion: string
+  depto?: string
+  ciudad: string
+  nota: string
+  repartidor: string
+  estado: EstadoDespacho
+  items: SaleItem[]
+  total: number
+  method: string
+  /** Datos de OptiRoute tras enviarlo (vacíos hasta que se envía). */
+  optirouteId?: string
+  trackingUrl?: string
+  trackingCode?: string
+  optirouteStatus?: number
+  enviadoEn?: Date
+}

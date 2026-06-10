@@ -427,7 +427,7 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
 type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount: number } | null }
 
 export default function VentasPage() {
-  const { registrarVenta, settings, toast, products, rol } = useStore()
+  const { registrarVenta, settings, toast, products, rol, addDespacho } = useStore()
   const { productHasFormats } = useFormats()
   const isMobile = useIsMobile()
   const verDinero = puedeVerDinero(rol)
@@ -508,7 +508,9 @@ export default function VentasPage() {
   const finalMargin = finalTotal ? (finalProfit / finalTotal) * 100 : 0
   const marginWarn = cart.length > 0 && finalTotal > 0 && finalMargin < (settings.minMargin || 25)
 
-  const canConfirm = cart.length > 0 && (tipo === 'local' || cliente.nombre.trim().length > 0) && (method !== 'Crédito' || cliente.nombre.trim().length > 0)
+  // Para despacho exigimos nombre + dirección + comuna (OptiRoute necesita geocodificar).
+  const despachoListo = cliente.nombre.trim().length > 0 && cliente.direccion.trim().length > 0 && cliente.ciudad.trim().length > 0
+  const canConfirm = cart.length > 0 && (tipo === 'local' ? true : despachoListo) && (method !== 'Crédito' || cliente.nombre.trim().length > 0)
 
   const confirm = async () => {
     if (!canConfirm) return
@@ -517,6 +519,27 @@ export default function VentasPage() {
     const sale = await registrarVenta(items, method, { tipo, cliente: cliente.nombre.trim() ? clienteRef : null })
     const confirmedSale: ConfirmedSale = { ...sale, descuento: discAmt > 0 ? { type: discount.type, value: +discount.value, amount: discAmt } : null }
     setConfirmed(confirmedSale)
+    // Si es despacho, crea el despacho persistente (pendiente de enviar a OptiRoute).
+    if (tipo === 'despacho') {
+      addDespacho({
+        id: 'desp_' + sale.id,
+        saleId: sale.id,
+        boleta: sale.boleta,
+        fecha: sale.date,
+        cliente: cliente.nombre,
+        telefono: cliente.numero,
+        correo: cliente.correo,
+        direccion: cliente.direccion,
+        depto: cliente.depto,
+        ciudad: cliente.ciudad,
+        nota: '',
+        repartidor: 'Sin asignar',
+        estado: 'pendiente',
+        items: sale.items,
+        total: sale.total,
+        method,
+      })
+    }
     setCart([])
     setCliente(emptyCliente)
     setDiscount({ type: 'pct', value: '' })
@@ -904,10 +927,10 @@ export default function VentasPage() {
               </div>
             )}
 
-            {tipo === 'despacho' && !cliente.nombre.trim() && cart.length > 0 && (
+            {tipo === 'despacho' && !despachoListo && cart.length > 0 && (
               <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
                 <Icon name="alert" size={13} />
-                Ingresa el nombre del destinatario para confirmar
+                Para despacho ingresa nombre, dirección y comuna del destinatario
               </div>
             )}
             {method === 'Crédito' && !cliente.nombre.trim() && cart.length > 0 && (

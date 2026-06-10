@@ -18,6 +18,25 @@ export default function ConfiguracionPage() {
   const dirty = JSON.stringify(f) !== JSON.stringify(settings)
   const save = () => { setSettings(f); toast('Configuración guardada') }
 
+  // Conectar OptiRoute: obtener el token (para pegarlo en Vercel). La clave no se guarda.
+  const [orUser, setOrUser] = useState('')
+  const [orPass, setOrPass] = useState('')
+  const [orToken, setOrToken] = useState('')
+  const [orLoading, setOrLoading] = useState(false)
+  const [orErr, setOrErr] = useState('')
+  const conectarOptiRoute = async () => {
+    setOrLoading(true); setOrErr(''); setOrToken('')
+    try {
+      const res = await fetch('/api/optiroute/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: orUser, password: orPass }) })
+      const j = (await res.json().catch(() => ({}))) as { token?: string; error?: string }
+      if (res.ok && j.token) setOrToken(j.token)
+      else setOrErr(j.error || 'No se pudo obtener el token')
+    } catch {
+      setOrErr('Error de conexión')
+    }
+    setOrLoading(false)
+  }
+
   const fileRef = useRef<HTMLInputElement>(null)
   const doExport = async () => {
     try {
@@ -82,6 +101,38 @@ export default function ConfiguracionPage() {
             <Field label="Moneda"><select className="select" value={f.currency} onChange={(e) => set('currency', e.target.value)}><option>Peso chileno (CLP)</option><option>Peso argentino (ARS)</option><option>Sol peruano (PEN)</option></select></Field>
             <Field label="Tu nombre"><input className="input" value={f.ownerName || ''} onChange={(e) => set('ownerName', e.target.value)} placeholder="Ej: María González" /></Field>
             <Field label="Tu cargo"><input className="input" value={f.ownerRole || ''} onChange={(e) => set('ownerRole', e.target.value)} placeholder="Ej: Dueña" /></Field>
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="card-head"><span style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--info-tint)', color: 'var(--info)', display: 'grid', placeItems: 'center' }}><Icon name="truck" size={16} /></span><div style={{ flex: 1 }}><div className="card-title">Conectar OptiRoute</div><div className="card-sub">Para enviar tus despachos a optimización de rutas</div></div></div>
+          <div className="card-pad" style={{ display: 'grid', gap: 12 }}>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600, lineHeight: 1.5 }}>
+              Ingresa tu usuario y clave de OptiRoute <strong>una sola vez</strong> para obtener tu token. No se guarda tu clave; solo se usa para generar el token, que luego pegarás en Vercel.
+            </div>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="Usuario OptiRoute (correo)"><input className="input" value={orUser} onChange={(e) => setOrUser(e.target.value)} placeholder="correo@ejemplo.com" autoComplete="off" /></Field>
+              <Field label="Clave OptiRoute"><input className="input" type="password" value={orPass} onChange={(e) => setOrPass(e.target.value)} placeholder="••••••••" autoComplete="off" /></Field>
+            </div>
+            <div>
+              <button className="btn btn-primary" disabled={!orUser || !orPass || orLoading} onClick={conectarOptiRoute}>
+                <Icon name="truck" size={15} />
+                {orLoading ? 'Obteniendo…' : 'Obtener token'}
+              </button>
+            </div>
+            {orErr && <div style={{ fontSize: 13, color: 'var(--danger)', fontWeight: 700 }}>{orErr}</div>}
+            {orToken && (
+              <div style={{ padding: '12px 14px', background: 'var(--ok-tint)', borderRadius: 11, border: '1px solid var(--primary-tint2)' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--primary-700)', marginBottom: 6 }}>✓ Token obtenido — cópialo y pégalo en Vercel</div>
+                <code style={{ display: 'block', wordBreak: 'break-all', fontSize: 12.5, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, padding: '8px 10px', fontFamily: 'monospace' }}>{orToken}</code>
+                <button className="btn btn-ghost" style={{ fontSize: 12.5, marginTop: 8 }} onClick={() => { navigator.clipboard?.writeText(orToken); toast('Token copiado') }}>
+                  <Icon name="download" size={13} />Copiar token
+                </button>
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600, marginTop: 8, lineHeight: 1.5 }}>
+                  En <strong>Vercel</strong> → tu proyecto → Settings → Environment Variables → agrega <strong>OPTIROUTE_TOKEN</strong> con este valor y vuelve a desplegar (Redeploy).
+                </div>
+              </div>
+            )}
           </div>
         </section>
 

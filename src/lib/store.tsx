@@ -10,7 +10,7 @@ import { PRODUCTS, CATEGORIES } from '@/lib/data'
 import { usePerfil, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
 import { createClient } from '@/lib/supabase/client'
 import type {
-  Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics,
+  Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics, Despacho,
 } from '@/types'
 
 const supabase = createClient()
@@ -230,6 +230,9 @@ interface StoreValue {
   saldarDeuda: (saleId: string, montoPagado: number, metodo?: string) => void
   deleteSale: (saleId: string) => void
   updateSale: (saleId: string, patch: Partial<Sale>) => void
+  despachos: Despacho[]
+  addDespacho: (d: Despacho) => void
+  updateDespacho: (id: string, patch: Partial<Despacho>) => void
   categorias: string[]
   addCategoria: (name: string) => void
   renameCategoria: (oldName: string, nuevo: string) => void
@@ -249,6 +252,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sales, setSales, rdySales] = useCloudCollection<Sale>('ventas', negocioId)
   const [clientes, setClientes, rdyCli] = useCloudCollection<Cliente>('clientes', negocioId)
   const [movements, setMovements, rdyMov] = useCloudCollection<Movement>('movimientos', negocioId)
+  const [despachos, setDespachos, rdyDesp] = useCloudCollection<Despacho>('despachos', negocioId)
   const [settings, setSettings, rdySet] = useCloudSingleton<Settings>('configuracion', 'data', negocioId, DEFAULT_SETTINGS)
   const [categorias, setCategorias, rdyCat] = useCloudSingleton<string[]>('categorias', 'lista', negocioId, [])
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -337,6 +341,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast('Transacción actualizada')
   }, [setSales, toast])
 
+  const addDespacho = useCallback((d: Despacho) => {
+    setDespachos((ds) => [d, ...ds])
+  }, [setDespachos])
+  const updateDespacho = useCallback((id: string, patch: Partial<Despacho>) => {
+    setDespachos((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)))
+  }, [setDespachos])
+
   const addProduct = useCallback((p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => {
     setProducts((ps) => {
       const id = Math.max(...ps.map((x) => x.id), 0) + 1
@@ -409,7 +420,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast(afectados > 0 ? `Categoría eliminada · ${afectados} producto(s) movido(s) a "Otros"` : 'Categoría eliminada')
   }, [products, setCategorias, setProducts, toast])
 
-  const cargando = !negocioId || !rdyProd || !rdySales || !rdyCli || !rdyMov || !rdySet || !rdyCat
+  const cargando = !negocioId || !rdyProd || !rdySales || !rdyCli || !rdyMov || !rdyDesp || !rdySet || !rdyCat
   if (cargando) return <PantallaCargando />
 
   const value: StoreValue = {
@@ -417,6 +428,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     products, sales, movements, settings, setSettings, toast, clientes,
     registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
     deleteSale, updateSale,
+    despachos, addDespacho, updateDespacho,
     categorias, addCategoria, renameCategoria, deleteCategoria,
   }
   return (
