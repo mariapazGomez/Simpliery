@@ -3,11 +3,11 @@
 // ---------- Recordatorios (portado de screen-recordatorios.jsx) ----------
 import { useState, useMemo } from 'react'
 import { useStore, useMetrics } from '@/lib/store'
+import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import { fmtCLP } from '@/lib/format'
 import { useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, Field } from '@/components/ui'
-import type { Product, Cliente } from '@/types'
 
 interface ReminderTypeDef {
   icon: string
@@ -47,38 +47,6 @@ const REMINDER_TYPES: Record<string, ReminderTypeDef> = {
 
 const PRIORITIES: Record<Priority, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' }
 const STATUSES: Record<string, string> = { pendiente: 'Pendiente', en_proceso: 'En proceso', completado: 'Completado', vencido: 'Vencido', pospuesto: 'Pospuesto' }
-
-export function seedReminders(products: Product[], _clientes: Cliente[]): Reminder[] {
-  const r: Reminder[] = []
-  let id = 1
-  const add = (type: string, title: string, desc: string, due: Date, priority: Priority = 'media', status = 'pendiente', link: ReminderLink | null = null) =>
-    r.push({ id: 'rem' + id++, type, title, desc, due: new Date(due), priority, status, link, createdAt: new Date() })
-
-  // Auto from stock
-  const sinStock = products.filter((p) => p.stock <= 0).slice(0, 3)
-  sinStock.forEach((p) => add('stock', `Reponer ${p.name}`, 'Sin stock disponible. Conviene reponer antes de perder ventas.', new Date(2026, 5, 9), 'alta', 'pendiente', { screen: 'inventario' }))
-
-  // Auto from clientes próximos
-  add('cliente', '5 clientes próximos a recomprar', 'Esta semana es buen momento para contactarlos y generar ventas.', new Date(2026, 5, 10), 'media', 'pendiente', { screen: 'segmentos' })
-
-  // Factura pendiente
-  add('factura', 'Emitir factura a Distribuidora Pérez', 'Venta #46198 por $42.000 — cliente solicitó factura.', new Date(2026, 5, 12), 'alta', 'pendiente', { screen: 'ventas' })
-  add('factura', 'Factura pendiente: Comercial Soto', 'Venta #46201 por $87.500 — plazo estimado fin de semana.', new Date(2026, 5, 14), 'alta', 'pendiente', { screen: 'ventas' })
-
-  // Gastos
-  add('gasto', 'Pagar cuenta de servicios básicos', 'Luz y agua del local — vence el 12 de junio.', new Date(2026, 5, 12), 'media', 'pendiente', { screen: 'finanzas' })
-  add('arriendo', 'Arriendo de junio pendiente', '$420.000 — vence el 15 de junio.', new Date(2026, 5, 15), 'alta', 'pendiente', { screen: 'finanzas' })
-  add('nomina', 'Pago nómina semanal', 'Camila y Diego — $280.000 en total.', new Date(2026, 5, 13), 'alta', 'pendiente', { screen: 'finanzas' })
-
-  // Meta
-  add('meta', 'Revisar avance meta financiera', 'Meta $5.000.000 — faltan 76 días. Vas al 42%.', new Date(2026, 5, 11), 'baja', 'pendiente', { screen: 'finanzas' })
-
-  // Manual tasks (completed)
-  add('tarea', 'Llamar proveedor de frutos secos', 'Coordinar entrega semanal.', new Date(2026, 5, 7), 'baja', 'completado', null)
-  add('tarea', 'Actualizar precios quesos', 'El proveedor subió costos un 8%.', new Date(2026, 5, 8), 'media', 'completado', { screen: 'productos' })
-
-  return r
-}
 
 function ReminderCard({
   r,
@@ -182,9 +150,9 @@ function NewReminderModal({ onClose, onSave }: { onClose: () => void; onSave: (r
 
 export default function RecordatoriosPage() {
   const go = useGo()
-  const { products, clientes } = useStore()
+  const { negocioId } = useStore()
   const m = useMetrics()
-  const [reminders, setReminders] = useState<Reminder[]>(() => seedReminders(products, clientes))
+  const [reminders, setReminders] = useCloudCollection<Reminder>('recordatorios', negocioId)
   const [filter, setFilter] = useState('pendientes')
   const [typeFilter, setTypeFilter] = useState('todos')
   const [showNew, setShowNew] = useState(false)

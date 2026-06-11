@@ -57,7 +57,7 @@ begin
   foreach t in array array[
     'productos', 'ventas', 'clientes', 'movimientos', 'gastos', 'nomina',
     'marketing', 'metas', 'creditos', 'proveedores', 'cierres', 'formatos', 'despachos',
-    'configuracion', 'categorias', 'folios'
+    'recordatorios', 'notif_config', 'configuracion', 'categorias', 'folios'
   ]
   loop
     if not exists (

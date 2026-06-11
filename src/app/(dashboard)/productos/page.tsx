@@ -40,7 +40,7 @@ const UNIT_LABEL = (u: string) => (({ kg: 'kg', gramo: 'gramos', litro: 'litros'
 const UNIT_ABBREV = (u: string) => (({ kg: 'kg', gramo: 'g', litro: 'L', mililitro: 'ml', Unidad: 'u.', caja: 'cajas', paquete: 'paq.' } as Record<string, string>)[u] || u)
 
 /* Constructor de variantes en línea — al crear o editar producto */
-function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', onVariantsChange }: { cost: number; stock: number; unit?: string; onVariantsChange: (v: PendingVariant[]) => void }) {
+function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0, onVariantsChange }: { cost: number; stock: number; unit?: string; existingCount?: number; onVariantsChange: (v: PendingVariant[]) => void }) {
   const [variants, setVariants] = useState<PendingVariant[]>([])
   const [adding, setAdding] = useState(false)
   const [nf, setNf] = useState<{ name: string; qty: string; price: string }>({ name: '', qty: '', price: '' })
@@ -63,6 +63,12 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', onVariantsChange 
 
   return (
     <div style={{ marginTop: 4 }}>
+      {existingCount > 0 && (
+        <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600, marginBottom: 10, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+          <Icon name="tag" size={13} style={{ marginTop: 1, flexShrink: 0 }} />
+          <span>Este producto ya tiene {existingCount} variante{existingCount !== 1 ? 's' : ''}. Aquí solo agregas <strong>nuevas</strong>; para ver, editar o borrar las existentes usa el botón “Variantes” de la tabla.</span>
+        </div>
+      )}
       {variants.length > 0 && (
         <div style={{ overflowX: 'auto', marginBottom: 10 }}>
           <table className="tbl" style={{ fontSize: 13 }}>
@@ -155,7 +161,8 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', onVariantsChange 
 /* ---------- ProductForm modal ---------- */
 function ProductForm({ initial, onSave, onClose }: { initial?: ProductWithExtras; onSave: (data: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'> & { photo?: string }, variants?: PendingVariant[]) => void; onClose: () => void }) {
   const { settings, categorias, addCategoria } = useStore()
-  const { productHasFormats } = useFormats()
+  const { productHasFormats, getFormats } = useFormats()
+  const existingVariants = initial ? getFormats(initial.id).length : 0
   const [f, setF] = useState<FormState>(
     initial
       ? { name: initial.name, cat: initial.cat, unit: initial.unit, cost: initial.cost, price: initial.price, stock: String(initial.stock), min: String(initial.min), photo: initial.photo, precioDespacho: initial.precioDespacho || '' }
@@ -340,7 +347,7 @@ function ProductForm({ initial, onSave, onClose }: { initial?: ProductWithExtras
           </div>
           {showVariants &&
             (valid ? (
-              <VariantsInlineBuilder cost={cost} stock={+f.stock || 0} unit={f.unit} onVariantsChange={setPendingVariants} />
+              <VariantsInlineBuilder cost={cost} stock={+f.stock || 0} unit={f.unit} existingCount={existingVariants} onVariantsChange={setPendingVariants} />
             ) : (
               <div style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 600, padding: '6px 0' }}>Completa nombre, costo y precio para ver los cálculos.</div>
             ))}
@@ -432,6 +439,14 @@ export default function ProductosPage() {
         variants.forEach((v) => addFormat(newId, { name: v.name, qty: v.qty, price: v.price }))
       }, 50)
     }
+  }
+
+  /* Edición de producto: guarda los cambios Y agrega las variantes nuevas del builder
+     inline (mismo `id`, sin el setTimeout del alta). Las existentes se gestionan aparte. */
+  const handleEdit = (data: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'> & { photo?: string }, variants: PendingVariant[] = []) => {
+    if (!edit) return
+    updateProduct(edit.id, data as Partial<Product>)
+    variants.forEach((v) => addFormat(edit.id, { name: v.name, qty: v.qty, price: v.price }))
   }
 
   /* Eliminar producto (con confirmación) — limpia sus variantes; no afecta ventas. */
@@ -667,7 +682,7 @@ export default function ProductosPage() {
       </div>
 
       {form && <ProductForm onSave={handleAdd} onClose={() => setForm(false)} />}
-      {edit && <ProductForm initial={edit} onSave={(patch) => updateProduct(edit.id, patch as Partial<Product>)} onClose={() => setEdit(null)} />}
+      {edit && <ProductForm initial={edit} onSave={handleEdit} onClose={() => setEdit(null)} />}
       {fmtModal && <FormatManagerModal product={fmtModal} onClose={() => setFmtModal(null)} />}
     </div>
   )
