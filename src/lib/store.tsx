@@ -115,7 +115,7 @@ interface StoreValue {
   toast: (msg: string, icon?: string) => void
   clientes: Cliente[]
   registrarVenta: (items: SaleItem[], method: string, extra?: RegistrarVentaExtra) => Promise<Sale>
-  addProduct: (p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => void
+  addProduct: (p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => number
   updateProduct: (id: number, patch: Partial<Product>) => void
   deleteProduct: (id: number) => void
   reponer: (id: number, qty: number) => void
@@ -244,14 +244,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setDespachos((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)))
   }, [setDespachos])
 
+  // Devuelve el id asignado para que quien lo crea (p. ej. con variantes) lo use
+  // sin adivinar. Calculamos el id una sola vez desde `products` y ese mismo va al estado.
   const addProduct = useCallback((p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => {
-    setProducts((ps) => {
-      const id = Math.max(...ps.map((x) => x.id), 0) + 1
-      const ordenMax = Math.max(0, ...ps.filter((x) => x.cat === p.cat).map((x) => x.orden ?? 0))
-      return [...ps, { ...p, id, orden: ordenMax + 1, margin: p.price - p.cost, marginPct: p.price ? Math.round(((p.price - p.cost) / p.price) * 1000) / 10 : 0, sold: 0 }]
-    })
+    const id = Math.max(0, ...products.map((x) => x.id)) + 1
+    const ordenMax = Math.max(0, ...products.filter((x) => x.cat === p.cat).map((x) => x.orden ?? 0))
+    setProducts((ps) => [...ps, { ...p, id, orden: ordenMax + 1, margin: p.price - p.cost, marginPct: p.price ? Math.round(((p.price - p.cost) / p.price) * 1000) / 10 : 0, sold: 0 }])
     toast('Producto agregado')
-  }, [setProducts, toast])
+    return id
+  }, [products, setProducts, toast])
 
   const deleteProduct = useCallback((id: number) => {
     setProducts((ps) => ps.filter((p) => p.id !== id))

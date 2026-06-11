@@ -429,16 +429,11 @@ export default function ProductosPage() {
     </th>
   )
 
-  /* Alta de producto: aplica también las variantes pendientes */
+  /* Alta de producto: usa el id REAL que devuelve addProduct para enganchar las variantes
+     (sin adivinar el id ni esperar con setTimeout → así no quedan variantes huérfanas). */
   const handleAdd = (data: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'> & { photo?: string }, variants: PendingVariant[] = []) => {
-    const newId = Math.max(...products.map((x) => x.id), 0) + 1
-    addProduct(data)
-    if (variants.length > 0) {
-      setTimeout(() => {
-        toggleFormats(newId, true)
-        variants.forEach((v) => addFormat(newId, { name: v.name, qty: v.qty, price: v.price }))
-      }, 50)
-    }
+    const id = addProduct(data)
+    variants.forEach((v) => addFormat(id, { name: v.name, qty: v.qty, price: v.price }))
   }
 
   /* Edición de producto: guarda los cambios Y agrega las variantes nuevas del builder
