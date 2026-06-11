@@ -192,7 +192,7 @@ function ClienteSelector({ tipo, cliente, setCliente }: { tipo: 'local' | 'despa
 
   const pickCliente = (c: Cliente) => {
     setSelected(c)
-    setCliente({ nombre: c.nombre, numero: c.telefono || '', correo: c.correo || '', direccion: c.direccion || '', depto: '', ciudad: c.ciudad || '' })
+    setCliente({ nombre: c.nombre, numero: c.telefono || '', correo: c.correo || '', direccion: c.direccion || '', depto: c.depto || '', ciudad: c.ciudad || '' })
     setQ(c.nombre)
     setOpen(false)
   }

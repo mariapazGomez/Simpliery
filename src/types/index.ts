@@ -95,6 +95,7 @@ export interface Cliente {
   nota: string
   compras: Compra[]
   direccion?: string
+  depto?: string
 }
 
 export interface Movement {

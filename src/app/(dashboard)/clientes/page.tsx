@@ -197,13 +197,23 @@ interface CsvPreview {
   headers: string[]
   rows: Record<string, string>[]
 }
-type Mapping = { nombre: string; telefono: string; correo: string; ciudad: string }
+type Mapping = { nombre: string; telefono: string; correo: string; direccion: string; ciudad: string; depto: string }
+// Etiquetas legibles de cada campo (mismos datos que necesita OptiRoute para despachar).
+const CAMPO_LABEL: Record<keyof Mapping, string> = {
+  nombre: 'Nombre',
+  telefono: 'Teléfono',
+  correo: 'Correo',
+  direccion: 'Dirección',
+  ciudad: 'Comuna / Ciudad',
+  depto: 'Depto / Casa',
+}
+const EMPTY_MAPPING: Mapping = { nombre: '', telefono: '', correo: '', direccion: '', ciudad: '', depto: '' }
 
 function ImportModal({ onClose }: { onClose: () => void }) {
   const { addClientes, toast } = useStore()
   const [preview, setPreview] = useState<CsvPreview | null>(null)
   const [drag, setDrag] = useState(false)
-  const [mapping, setMapping] = useState<Mapping>({ nombre: '', telefono: '', correo: '', ciudad: '' })
+  const [mapping, setMapping] = useState<Mapping>(EMPTY_MAPPING)
   const parseCSV = (text: string): CsvPreview => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim())
     const sep = lines[0].includes(';') ? ';' : ','
@@ -224,12 +234,14 @@ function ImportModal({ onClose }: { onClose: () => void }) {
     r.onload = (e) => {
       try {
         const { headers, rows } = parseCSV(String(e.target?.result ?? ''))
-        const autoMap: Mapping = { nombre: '', telefono: '', correo: '', ciudad: '' }
+        const autoMap: Mapping = { ...EMPTY_MAPPING }
         headers.forEach((h) => {
-          if (/nombre|name/i.test(h)) autoMap.nombre = h
-          else if (/tel[eé]?fono|phone|cel/i.test(h)) autoMap.telefono = h
-          else if (/correo|email/i.test(h)) autoMap.correo = h
-          else if (/ciudad|city/i.test(h)) autoMap.ciudad = h
+          if (/nombre|name|cliente/i.test(h)) autoMap.nombre = h
+          else if (/tel[eé]?fono|phone|cel|whatsapp|fono/i.test(h)) autoMap.telefono = h
+          else if (/correo|email|mail/i.test(h)) autoMap.correo = h
+          else if (/direcci[oó]n|address|domicilio|calle/i.test(h)) autoMap.direccion = h
+          else if (/comuna|ciudad|city|sector|localidad/i.test(h)) autoMap.ciudad = h
+          else if (/depto|dpto|departamento|apartment|apto|casa/i.test(h)) autoMap.depto = h
         })
         setMapping(autoMap)
         setPreview({ headers, rows })
@@ -246,10 +258,12 @@ function ImportModal({ onClose }: { onClose: () => void }) {
       nombre: r[mapping.nombre] || 'Sin nombre',
       telefono: r[mapping.telefono] || '',
       correo: r[mapping.correo] || '',
+      direccion: r[mapping.direccion] || '',
       ciudad: r[mapping.ciudad] || '',
       createdAt: new Date(),
       nota: '',
       compras: [],
+      ...(r[mapping.depto] ? { depto: r[mapping.depto] } : {}),
     }))
     addClientes(clientes)
     onClose()
@@ -312,13 +326,13 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           <div style={{ marginTop: 16, padding: '13px 16px', background: 'var(--surface-3)', borderRadius: 11 }}>
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Columnas reconocidas automáticamente:</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {['nombre', 'telefono', 'correo', 'ciudad'].map((k) => (
+              {(Object.keys(CAMPO_LABEL) as (keyof Mapping)[]).map((k) => (
                 <span key={k} className="chip chip-neutral">
-                  {k}
+                  {CAMPO_LABEL[k]}
                 </span>
               ))}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 8, fontWeight: 600 }}>💡 Exporta tu lista de Excel como CSV y súbela directo. Las columnas se mapean solas.</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 8, fontWeight: 600 }}>💡 Incluye <b>dirección</b>, <b>comuna</b> y <b>depto</b> para poder despachar a esos clientes con OptiRoute. Exporta tu lista de Excel como CSV y súbela directo: las columnas se mapean solas.</div>
           </div>
         </div>
       ) : (
@@ -333,7 +347,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             {(Object.entries(mapping) as [keyof Mapping, string][]).map(([field, val]) => (
               <label key={field} className="field">
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)', textTransform: 'capitalize' }}>{field}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{CAMPO_LABEL[field]}</span>
                 <select className="select" value={val} onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value }))}>
                   <option value="">(no importar)</option>
                   {preview.headers.map((h) => (
@@ -352,7 +366,9 @@ function ImportModal({ onClose }: { onClose: () => void }) {
                   <th>Nombre</th>
                   <th>Teléfono</th>
                   <th>Correo</th>
-                  <th>Ciudad</th>
+                  <th>Dirección</th>
+                  <th>Comuna</th>
+                  <th>Depto</th>
                 </tr>
               </thead>
               <tbody>
@@ -361,7 +377,9 @@ function ImportModal({ onClose }: { onClose: () => void }) {
                     <td>{r[mapping.nombre] || '—'}</td>
                     <td>{r[mapping.telefono] || '—'}</td>
                     <td>{r[mapping.correo] || '—'}</td>
+                    <td>{r[mapping.direccion] || '—'}</td>
                     <td>{r[mapping.ciudad] || '—'}</td>
+                    <td>{r[mapping.depto] || '—'}</td>
                   </tr>
                 ))}
               </tbody>
