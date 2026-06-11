@@ -420,17 +420,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast(afectados > 0 ? `Categoría eliminada · ${afectados} producto(s) movido(s) a "Otros"` : 'Categoría eliminada')
   }, [products, setCategorias, setProducts, toast])
 
+  // Memoizamos el value: así un cambio de `toasts` (un aviso aparece/desaparece)
+  // NO recrea el objeto ni re-renderiza a todos los que usan useStore(). El value
+  // solo cambia cuando cambian datos reales (los callbacks ya son estables).
+  const value = useMemo<StoreValue>(
+    () => ({
+      negocioId, rol,
+      products, sales, movements, settings, setSettings, toast, clientes,
+      registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+      deleteSale, updateSale,
+      despachos, addDespacho, updateDespacho,
+      categorias, addCategoria, renameCategoria, deleteCategoria,
+    }),
+    [
+      negocioId, rol,
+      products, sales, movements, settings, setSettings, toast, clientes,
+      registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+      deleteSale, updateSale,
+      despachos, addDespacho, updateDespacho,
+      categorias, addCategoria, renameCategoria, deleteCategoria,
+    ],
+  )
+
   const cargando = !negocioId || !rdyProd || !rdySales || !rdyCli || !rdyMov || !rdyDesp || !rdySet || !rdyCat
   if (cargando) return <PantallaCargando />
 
-  const value: StoreValue = {
-    negocioId, rol,
-    products, sales, movements, settings, setSettings, toast, clientes,
-    registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
-    deleteSale, updateSale,
-    despachos, addDespacho, updateDespacho,
-    categorias, addCategoria, renameCategoria, deleteCategoria,
-  }
   return (
     <Store.Provider value={value}>
       {children}

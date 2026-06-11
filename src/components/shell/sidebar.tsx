@@ -2,17 +2,23 @@
 
 // ---------- Sidebar agrupado con badges (portado de app.jsx) ----------
 import { usePathname, useRouter } from 'next/navigation'
+import Link, { useLinkStatus } from 'next/link'
 import { useMemo } from 'react'
 import { useStore, useMetrics, clientMetrics } from '@/lib/store'
-import { NAV_GROUPS, PATH_TO_ID, useGo } from '@/lib/nav'
+import { NAV_GROUPS, PATH_TO_ID, ROUTE_MAP } from '@/lib/nav'
 import { puedeVer } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { createClient } from '@/lib/supabase/client'
 
+/** Spinner que aparece en el tab mientras Next carga su ruta (feedback inmediato al clic). */
+function NavSpinner() {
+  const { pending } = useLinkStatus()
+  return pending ? <span className="nav-spin" aria-hidden /> : null
+}
+
 export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const { settings, clientes, rol } = useStore()
   const m = useMetrics()
-  const go = useGo()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -41,10 +47,10 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
       </div>
 
       {puedeVer(rol, 'ventas') && (
-        <button className="btn btn-primary" style={{ margin: '2px 6px 6px', justifyContent: 'center' }} onClick={() => { go('ventas'); setOpen(false) }}>
+        <Link href={ROUTE_MAP.ventas} className="btn btn-primary" style={{ margin: '2px 6px 6px', justifyContent: 'center' }} onClick={() => setOpen(false)}>
           <Icon name="plus" size={17} />
           Registrar venta
-        </button>
+        </Link>
       )}
 
       {NAV_GROUPS.map((g) => {
@@ -54,7 +60,7 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
         <div key={g.label}>
           <div className="nav-label">{g.label}</div>
           {items.map((n) => (
-            <button key={n.id} className={'nav-item' + (activeId === n.id ? ' active' : '')} onClick={() => { go(n.id); setOpen(false) }}>
+            <Link key={n.id} href={ROUTE_MAP[n.id]} className={'nav-item' + (activeId === n.id ? ' active' : '')} onClick={() => setOpen(false)}>
               <Icon name={n.icon} size={19} className="nav-ic" />
               {n.label}
               {n.id === 'inventario' && m.lowStock.length > 0 && <span className="nav-badge">{m.lowStock.length}</span>}
@@ -62,7 +68,8 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
               {n.id === 'recordatorios' && <span className="nav-badge" style={{ background: 'var(--terra)' }}>!</span>}
               {n.id === 'clientes' && m.totalDeuda > 0 && <span className="nav-badge">{m.clientesDeudores}</span>}
               {n.id === 'fiados' && m.totalDeuda > 0 && <span className="nav-badge">{m.clientesDeudores}</span>}
-            </button>
+              <NavSpinner />
+            </Link>
           ))}
         </div>
         )
@@ -75,9 +82,9 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
             <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{settings.ownerName?.trim() || 'Mi cuenta'}</div>
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{settings.ownerRole?.trim() || 'Dueño/a'}</div>
           </div>
-          <button onClick={() => { go('config'); setOpen(false) }} title="Configuración" style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
+          <Link href={ROUTE_MAP.config} onClick={() => setOpen(false)} title="Configuración" style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
             <Icon name="config" size={15} />
-          </button>
+          </Link>
         </div>
         <button onClick={cerrarSesion} className="nav-item" style={{ width: '100%', marginTop: 4, color: 'var(--danger)' }}>
           <Icon name="logout" size={18} className="nav-ic" />
