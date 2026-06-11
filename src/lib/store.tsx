@@ -6,12 +6,11 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { catColor, stockState, fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
-import { PRODUCTS, CATEGORIES } from '@/lib/data'
 import { usePerfil, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
 import { createClient } from '@/lib/supabase/client'
 import { PRODUCT_UNITS } from '@/types'
 import type {
-  Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics, Despacho,
+  Product, Sale, SaleItem, Cliente, Movement, Settings, ClienteRef, ClientMetrics, Despacho,
 } from '@/types'
 
 const supabase = createClient()
@@ -21,68 +20,6 @@ export const TODAY = new Date() // fecha real actual
 const DEFAULT_SETTINGS: Settings = {
   business: 'Mi negocio', ownerName: '', ownerRole: 'Dueño/a', currency: 'Peso chileno (CLP)',
   methods: ['Efectivo', 'Transferencia', 'Tarjeta'], minStockDefault: 5, minMargin: 25,
-}
-
-/** Lista de categorías de ejemplo (se usa al sembrar datos de demo). */
-export function seedCategorias(): string[] {
-  return [...new Set([...CATEGORIES, ...PRODUCTS.map((p) => p.cat)])]
-}
-export function fmtDate(d: Date): string {
-  return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
-}
-
-/* ---------- Seed de clientes ---------- */
-export function seedClientes(products: Product[]): Cliente[] {
-  let s = 77321
-  const rnd = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff
-    return s / 0x7fffffff
-  }
-  const names: [string, string][] = [
-    ['María', 'González Rojas'], ['Carlos', 'Pérez Fuentes'], ['Ana', 'Martínez Silva'],
-    ['Pedro', 'López Araya'], ['Sofía', 'Hernández Vega'], ['Luis', 'Torres Molina'],
-    ['Valentina', 'Ramos Castro'], ['Diego', 'Flores Muñoz'], ['Camila', 'Díaz Soto'],
-    ['Rodrigo', 'Vargas Pinto'], ['Javiera', 'Morales Rojas'], ['Felipe', 'Jiménez Lagos'],
-    ['Isidora', 'Castro Núñez'], ['Matías', 'Álvarez Cerda'], ['Paula', 'Reyes Tapia'], ['Tomás', 'Sánchez Vera'],
-  ]
-  const cities = ['Santiago', 'Providencia', 'Ñuñoa', 'Las Condes', 'Maipú', 'Viña del Mar', 'La Florida', 'San Bernardo']
-  const methods = ['Efectivo', 'Efectivo', 'Tarjeta', 'Tarjeta', 'Transferencia']
-  const domains = ['gmail.com', 'hotmail.com', 'yahoo.es', 'outlook.com']
-  let bol = 45800
-  return names.map(([fn, ln], i) => {
-    const nComp = 1 + Math.floor(rnd() * 13)
-    const city = cities[Math.floor(rnd() * cities.length)]
-    const compras: Compra[] = []
-    let daysAgo = Math.floor(rnd() * 8) + 1
-    for (let j = 0; j < nComp; j++) {
-      const nIt = 1 + Math.floor(rnd() * 3)
-      const items = []
-      for (let k = 0; k < nIt; k++) {
-        const p = products[Math.floor(rnd() * products.length)]
-        const qty = 1 + Math.floor(rnd() * 2)
-        items.push({ productId: p.id, name: p.name, cat: p.cat, qty, price: p.price, cost: p.cost })
-      }
-      const total = items.reduce((a, it) => a + it.price * it.qty, 0)
-      const cost = items.reduce((a, it) => a + it.cost * it.qty, 0)
-      const d = new Date(TODAY)
-      d.setDate(d.getDate() - daysAgo)
-      compras.push({ id: 'cv' + bol, boleta: bol++, date: d, items, method: methods[Math.floor(rnd() * methods.length)], total, cost, profit: total - cost })
-      daysAgo += Math.floor(rnd() * 14) + 3
-    }
-    compras.sort((a, b) => b.date.getTime() - a.date.getTime())
-    const slug = fn.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    const slug2 = ln.split(' ')[0].toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    return {
-      id: 'c' + (i + 1),
-      nombre: fn + ' ' + ln,
-      telefono: '+56 9 ' + Math.floor(rnd() * 9000 + 1000) + ' ' + Math.floor(rnd() * 9000 + 1000),
-      correo: slug + '.' + slug2 + '@' + domains[Math.floor(rnd() * domains.length)],
-      ciudad: city,
-      createdAt: compras[compras.length - 1].date,
-      nota: '',
-      compras,
-    }
-  })
 }
 
 /* ---------- Métricas derivadas por cliente ---------- */
@@ -154,50 +91,6 @@ export function buildSalesCSV(sales: Sale[], label: string) {
     }
   }
   exportCSV(`ventas_${label}_${new Date().toLocaleDateString('es-CL').replace(/\//g, '-')}.csv`, rows)
-}
-
-/* ---------- Seed de ventas del "día" ---------- */
-export function seedSales(products: Product[]): Sale[] {
-  let s = 987654
-  const rnd = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff
-    return s / 0x7fffffff
-  }
-  const methods = ['Efectivo', 'Efectivo', 'Efectivo', 'Tarjeta', 'Tarjeta', 'Transferencia']
-  const sales: Sale[] = []
-  let bol = 46210
-  const hours = [9, 10, 10, 11, 11, 12, 12, 13, 14, 16, 17, 17, 18, 19]
-  const despachoClientes: ClienteRef[] = [
-    { nombre: 'María González', ciudad: 'Santiago', telefono: '+56912345678' },
-    { nombre: 'Pedro Soto', ciudad: 'Providencia', telefono: '+56923456789' },
-    { nombre: 'Ana Martínez', ciudad: 'Las Condes', telefono: '+56934567890' },
-    { nombre: 'Luis Rojas', ciudad: 'Ñuñoa', telefono: '+56945678901' },
-    { nombre: 'Carmen López', ciudad: 'Maipú', telefono: '+56956789012' },
-  ]
-  for (let i = 0; i < 14; i++) {
-    const nItems = 1 + Math.floor(rnd() * 3)
-    const items: SaleItem[] = []
-    for (let k = 0; k < nItems; k++) {
-      const p = products[Math.floor(rnd() * products.length)]
-      const qty = 1 + Math.floor(rnd() * 2)
-      items.push({ productId: p.id, name: p.name, cat: p.cat, qty, price: p.price, cost: p.cost })
-    }
-    const total = items.reduce((a, it) => a + it.price * it.qty, 0)
-    const cost = items.reduce((a, it) => a + it.cost * it.qty, 0)
-    const h = hours[i]
-    const isDespacho = rnd() < 0.38
-    const cliente = isDespacho ? despachoClientes[Math.floor(rnd() * despachoClientes.length)] : null
-    const isCredito = !isDespacho && rnd() < 0.15
-    const creditoCliente = isCredito ? despachoClientes[Math.floor(rnd() * despachoClientes.length)] : null
-    const metodoPago = isCredito ? 'Crédito' : methods[Math.floor(rnd() * methods.length)]
-    sales.push({
-      id: 'b' + bol, boleta: bol++, date: (() => { const d = new Date(TODAY); d.setHours(h, Math.floor(rnd() * 60), 0, 0); return d })(),
-      items, method: metodoPago, total, cost, profit: total - cost,
-      tipo: isDespacho ? 'despacho' : 'local', cliente: isDespacho ? cliente : isCredito ? creditoCliente : null,
-      credito: isCredito, pagado: !isCredito, montoPendiente: isCredito ? total : 0, pagos: [],
-    })
-  }
-  return sales
 }
 
 interface Toast {

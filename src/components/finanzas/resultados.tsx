@@ -3,7 +3,7 @@
 // ---------- Finanzas: Estado de Resultados (portado de finanzas-resultados.jsx) ----------
 
 import { useState } from 'react'
-import { useStore, TODAY } from '@/lib/store'
+import { TODAY } from '@/lib/store'
 import { useFinanzas, useFinMetrics, GASTO_CATS, GASTO_ICONS, GASTO_COLORS } from '@/lib/finanzas-store'
 import { fmtCLP, fmtPct } from '@/lib/format'
 import { Icon } from '@/components/icon'
@@ -25,8 +25,6 @@ interface ResultRow {
 export function FinResultados() {
   const m = useFinMetrics()
   const { gastos } = useFinanzas()
-  // useStore se mantiene como dependencia de datos (mismo patrón que el prototipo).
-  void useStore
   const [period, setPeriod] = useState('mes')
   const periods: [string, string][] = [['hoy', 'Hoy'], ['semana', 'Semana'], ['mes', 'Este mes'], ['anterior', 'Mes anterior']]
   const factor = period === 'hoy' ? 0.04 : period === 'semana' ? 0.22 : period === 'anterior' ? 1.12 : 1

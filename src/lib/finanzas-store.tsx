@@ -4,7 +4,7 @@
 // Portado de finanzas-store.jsx.
 
 import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react'
-import { useStore, useMetrics, TODAY, clientMetrics } from '@/lib/store'
+import { useStore, TODAY, clientMetrics } from '@/lib/store'
 import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import type { Gasto, NominaItem, MarketingItem, Meta, Credito, CreditoPago } from '@/types'
 
@@ -17,81 +17,6 @@ export const GASTO_COLORS: Record<string, string> = {
   Arriendo: 'var(--terra)', Sueldos: 'var(--info)', Marketing: 'oklch(0.62 0.12 290)', Mercadería: 'var(--primary)',
   Servicios: 'oklch(0.66 0.10 80)', Transporte: 'var(--warn)', Comisiones: 'oklch(0.60 0.10 200)',
   Contabilidad: 'var(--ink-3)', Mantención: 'oklch(0.60 0.08 30)', Otros: 'var(--ink-3)',
-}
-
-export function seedGastos(): Gasto[] {
-  const d = (daysAgo: number, dia = 1) => {
-    const x = new Date(TODAY)
-    x.setDate(x.getDate() - daysAgo + dia)
-    return x
-  }
-  return [
-    { id: 'g1', fecha: d(5), cat: 'Arriendo', desc: 'Arriendo junio 2026', monto: 480000, method: 'Transferencia', recurrente: true, proveedor: 'Inmobiliaria Castro', estado: 'pagado' },
-    { id: 'g2', fecha: d(3), cat: 'Sueldos', desc: 'Sueldo Carlos - cajero', monto: 450000, method: 'Transferencia', recurrente: true, proveedor: 'Carlos Muñoz', estado: 'pagado' },
-    { id: 'g3', fecha: d(8), cat: 'Sueldos', desc: 'Sueldo Valentina - despacho', monto: 380000, method: 'Transferencia', recurrente: true, proveedor: 'Valentina Rojas', estado: 'pagado' },
-    { id: 'g4', fecha: d(10), cat: 'Marketing', desc: 'Meta Ads - campaña junio', monto: 85000, method: 'Tarjeta', recurrente: false, proveedor: 'Meta', estado: 'pagado' },
-    { id: 'g5', fecha: d(12), cat: 'Marketing', desc: 'Instagram - influencer', monto: 60000, method: 'Transferencia', recurrente: false, proveedor: '@emporiochile', estado: 'pagado' },
-    { id: 'g6', fecha: d(2), cat: 'Servicios', desc: 'Luz y agua', monto: 62000, method: 'Transferencia', recurrente: true, proveedor: 'CGE', estado: 'pagado' },
-    { id: 'g7', fecha: d(1), cat: 'Servicios', desc: 'Internet fibra óptica', monto: 29900, method: 'Débito', recurrente: true, proveedor: 'Entel', estado: 'pagado' },
-    { id: 'g8', fecha: d(0), cat: 'Transporte', desc: 'Combustible camioneta', monto: 48000, method: 'Efectivo', recurrente: false, proveedor: 'COPEC', estado: 'pagado' },
-    { id: 'g9', fecha: d(0), cat: 'Mercadería', desc: 'Reposición quesos artesanales', monto: 190000, method: 'Transferencia', recurrente: false, proveedor: 'Quesos del Sur', estado: 'pagado' },
-    { id: 'g10', fecha: d(15), cat: 'Contabilidad', desc: 'Honorarios contador', monto: 90000, method: 'Transferencia', recurrente: true, proveedor: 'Felipe CPA', estado: 'pagado' },
-    { id: 'g11', fecha: d(25), cat: 'Arriendo', desc: 'Arriendo mayo 2026', monto: 480000, method: 'Transferencia', recurrente: true, proveedor: 'Inmobiliaria Castro', estado: 'pagado' },
-    { id: 'g12', fecha: d(20), cat: 'Mantención', desc: 'Reparación refrigerador', monto: 75000, method: 'Efectivo', recurrente: false, proveedor: 'Técnico Gómez', estado: 'pagado' },
-    { id: 'g13', fecha: d(0), cat: 'Comisiones', desc: 'Comisión Transbank', monto: 18500, method: 'Automático', recurrente: true, proveedor: 'Transbank', estado: 'pendiente' },
-    { id: 'g14', fecha: d(0), cat: 'Sueldos', desc: 'Gratificación junio', monto: 82000, method: 'Transferencia', recurrente: false, proveedor: 'Carlos Muñoz', estado: 'pendiente' },
-  ]
-}
-
-export function seedNomina(): NominaItem[] {
-  return [
-    { id: 'n1', nombre: 'Carlos Muñoz', cargo: 'Cajero', tipo: 'Fijo', monto: 450000, dia: 5, estado: 'pagado', horas: 160, bono: 0 },
-    { id: 'n2', nombre: 'Valentina Rojas', cargo: 'Despacho', tipo: 'Fijo', monto: 380000, dia: 5, estado: 'pagado', horas: 140, bono: 0 },
-    { id: 'n3', nombre: 'Pedro Arriagada', cargo: 'Reposición', tipo: 'Variable', monto: 180000, dia: 15, estado: 'pendiente', horas: 80, bono: 15000 },
-  ]
-}
-
-export function seedMarketing(): MarketingItem[] {
-  // Fechas relativas a TODAY (días atrás) para que el ejemplo no quede en el pasado.
-  const dAgo = (daysAgo: number) => {
-    const x = new Date(TODAY)
-    x.setDate(x.getDate() - daysAgo)
-    return x
-  }
-  return [
-    { id: 'mk1', campaign: 'Quesos artesanales', canal: 'Meta Ads', fecha: dAgo(7), monto: 85000, ventasGeneradas: 320000, clientesNuevos: 8, obs: 'Buen alcance, bajo CPC' },
-    { id: 'mk2', campaign: 'Frutos secos verano', canal: 'Instagram orgánico', fecha: dAgo(5), monto: 0, ventasGeneradas: 85000, clientesNuevos: 3, obs: 'Post viral' },
-    { id: 'mk3', campaign: 'Influencer @emporiochile', canal: 'Influencer', fecha: dAgo(11), monto: 60000, ventasGeneradas: 210000, clientesNuevos: 14, obs: 'Buen ROAS' },
-    { id: 'mk4', campaign: 'Volantes barrio', canal: 'Volantes', fecha: dAgo(24), monto: 15000, ventasGeneradas: 60000, clientesNuevos: 2, obs: 'Difícil medir' },
-  ]
-}
-
-export function seedCreditos(): Credito[] {
-  // Fechas relativas a TODAY: próximas cuotas a futuro, pagos en el pasado reciente.
-  const dRel = (days: number) => {
-    const x = new Date(TODAY)
-    x.setDate(x.getDate() + days)
-    return x
-  }
-  return [
-    { id: 'cr1', acreedor: 'Banco Estado', tipo: 'Préstamo bancario', montoOriginal: 8000000, saldo: 5200000, tasaAnual: 14.5, cuotaMensual: 280000, proximaCuota: dRel(11), estado: 'vigente', notas: 'Crédito 36 meses', pagos: [{ monto: 280000, fecha: dRel(-19), nota: 'Cuota mes anterior', interes: 62833, amortizacion: 217167, saldoAntes: 5417167, saldoDespues: 5200000 }] },
-    { id: 'cr2', acreedor: 'Proveedor Quesos del Sur', tipo: 'Deuda proveedor', montoOriginal: 350000, saldo: 190000, tasaAnual: 0, cuotaMensual: 95000, proximaCuota: dRel(6), estado: 'vigente', notas: 'Pago en 2 cuotas acordadas', pagos: [] },
-    { id: 'cr3', acreedor: 'Leasing refrigerador', tipo: 'Leasing', montoOriginal: 1200000, saldo: 780000, tasaAnual: 9.8, cuotaMensual: 38000, proximaCuota: dRel(21), estado: 'al_dia', notas: '24 cuotas', pagos: [] },
-    { id: 'cr4', acreedor: 'Banco BBCI', tipo: 'Línea de crédito', montoOriginal: 2000000, saldo: 0, tasaAnual: 18, cuotaMensual: 0, proximaCuota: dRel(23), estado: 'pagado', notas: 'Línea disponible, saldo pagado', pagos: [] },
-  ]
-}
-
-export function seedMetas(): Meta[] {
-  // Fechas objetivo relativas a TODAY (meses a futuro) para que el ejemplo no quede vencido.
-  const mesesAdelante = (meses: number) => {
-    const x = new Date(TODAY)
-    x.setMonth(x.getMonth() + meses)
-    return x
-  }
-  return [
-    { id: 'mt1', nombre: 'Reposición mercadería', monto: 5000000, fechaObj: mesesAdelante(3), saldoActual: 1200000, aporteEsperado: 295000, prioridad: 'Alta', color: 'var(--primary)' },
-    { id: 'mt2', nombre: 'Comprar refrigerador nuevo', monto: 1200000, fechaObj: mesesAdelante(2), saldoActual: 400000, aporteEsperado: 200000, prioridad: 'Media', color: 'var(--info)' },
-  ]
 }
 
 interface FinanzasValue {
@@ -155,8 +80,6 @@ export function FinanzasProvider({ children }: { children: ReactNode }) {
 export function useFinMetrics() {
   const { gastos, nomina, metas } = useFinanzas()
   const { sales, products, clientes } = useStore()
-  // useMetrics no se usa aquí directamente, pero se mantiene la dependencia de datos vía store.
-  void useMetrics
   return useMemo(() => {
     const now = TODAY
     const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1)

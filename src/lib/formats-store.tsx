@@ -6,21 +6,6 @@ import { useStore } from '@/lib/store'
 import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import type { Product, Format } from '@/types'
 
-export interface BaseUnit {
-  unit: string
-  label: string
-  displayFn: (n: number) => string
-}
-export const BASE_UNITS: Record<string, BaseUnit> = {
-  Huevos: { unit: 'unidad', label: 'unidades', displayFn: (n) => `${n} u.` },
-  'Frutos secos': { unit: 'unidad', label: 'unidades', displayFn: (n) => `${n} u.` },
-  Quesos: { unit: 'unidad', label: 'unidades', displayFn: (n) => `${n} u.` },
-  'Queso de cabra': { unit: 'unidad', label: 'unidades', displayFn: (n) => `${n} u.` },
-}
-export function getBaseUnit(cat: string): BaseUnit {
-  return BASE_UNITS[cat] || { unit: 'unidad', label: 'unidades', displayFn: (n) => n + ' u.' }
-}
-
 interface FormatsValue {
   formats: Format[]
   getFormats: (productId: number) => Format[]
