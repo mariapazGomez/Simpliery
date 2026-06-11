@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from 'react'
 import { useStore, useMetrics, clientMetrics, TODAY } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
-import { fmtCLP, fmtNum, fmtPct, catColor, stockState, precioDespachoDe, precioDespachoFormato, UNIT_IS_WEIGHT } from '@/lib/format'
+import { fmtCLP, fmtNum, fmtPct, catColor, stockState, precioDespachoDe, precioFormatoCanal, formatoEnCanal, UNIT_IS_WEIGHT } from '@/lib/format'
 import { puedeVerDinero } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
@@ -27,8 +27,10 @@ interface CartLine {
   baseName?: string
   displayFormat?: string
   originalPrice?: number
-  /** Precio LOCAL base (sin recargo despacho). Estable para recalcular al cambiar local↔despacho. */
+  /** Precio LOCAL base. Estable para recalcular al cambiar local↔despacho. */
   basePrice?: number
+  /** Precio en despacho/online de esta línea. Para recalcular al cambiar de canal. */
+  despachoPrice?: number
   unit?: string
 }
 
@@ -57,7 +59,7 @@ function useIsMobile(bp = 760) {
   return mobile
 }
 
-function ProductPicker({ onPick, onPickFormat, onPickGranel }: { onPick: (p: ProductWithKg) => void; onPickFormat: (p: ProductWithKg, fmt: Format, qty: number) => void; onPickGranel: (p: ProductWithKg, amountBase: number, price: number, label: string) => void }) {
+function ProductPicker({ tipo, onPick, onPickFormat, onPickGranel }: { tipo: 'local' | 'despacho'; onPick: (p: ProductWithKg) => void; onPickFormat: (p: ProductWithKg, fmt: Format, qty: number) => void; onPickGranel: (p: ProductWithKg, amountBase: number, price: number, label: string) => void }) {
   const { products, categorias } = useStore()
   const { productHasFormats, getFormats, maxUnitsForFormat } = useFormats()
   const [cat, setCat] = useState('Todas')
@@ -105,7 +107,7 @@ function ProductPicker({ onPick, onPickFormat, onPickGranel }: { onPick: (p: Pro
           )
           // Producto con tramos/formatos → chips de 1 toque (+ "otra cantidad" si es por peso)
           if (hasFmt) {
-            const fmts = getFormats(p.id)
+            const fmts = getFormats(p.id).filter((f) => formatoEnCanal(f.canal, tipo))
             const granel = UNIT_IS_WEIGHT(p.unit)
             return (
               <div key={p.id} className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: `1px solid ${granelFor?.id === p.id ? 'var(--primary)' : 'var(--line)'}`, opacity: st === 'sin' ? 0.55 : 1 }}>
@@ -116,11 +118,14 @@ function ProductPicker({ onPick, onPickFormat, onPickGranel }: { onPick: (p: Pro
                     <span className="tnum" style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 700, whiteSpace: 'nowrap' }}>{stockLabel(p)(st)}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {fmts.length === 0 && !granel && (
+                      <span style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>No se vende en {tipo === 'despacho' ? 'despacho' : 'local'}</span>
+                    )}
                     {fmts.map((f) => {
                       const ok = maxUnitsForFormat(p, f.id) > 0
                       return (
                         <button key={f.id} disabled={!ok} onClick={() => onPickFormat(p, f, 1)} className="chip" style={{ border: '1px solid var(--line)', background: ok ? 'var(--surface-3)' : 'var(--surface)', color: ok ? 'var(--ink)' : 'var(--ink-3)', padding: '6px 10px', cursor: ok ? 'pointer' : 'not-allowed', opacity: ok ? 1 : 0.5, fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5 }}>
-                          {f.name} · {fmtCLP(f.price)}
+                          {f.name} · {fmtCLP(precioFormatoCanal(f, tipo))}
                         </button>
                       )
                     })}
@@ -488,18 +493,6 @@ export default function VentasPage() {
     }
   }
 
-  // Precio de una línea según el tipo: en despacho usa el precio fijo del producto
-  // (o la misma proporción local→despacho para los formatos/variantes).
-  const precioLinea = (
-    base: number,
-    prod: { price: number; precioDespacho?: number } | undefined,
-    esFormato: boolean,
-    t: 'local' | 'despacho',
-  ) => {
-    if (t !== 'despacho' || !prod) return base
-    return esFormato ? precioDespachoFormato(base, prod.price, prod.precioDespacho) : precioDespachoDe(base, prod.precioDespacho)
-  }
-
   const add = (p: ProductWithKg) => {
     // No permitir vender más de lo que hay en stock (evita descuadres al anular).
     const enCarro = cart.filter((i) => i.productId === p.id && !i.formatId).reduce((a, i) => a + i.qty, 0)
@@ -510,8 +503,10 @@ export default function VentasPage() {
     setCart((c) => {
       const e = c.find((i) => i.productId === p.id && !i.formatId)
       if (e) return c.map((i) => (i.productId === p.id && !i.formatId ? { ...i, qty: i.qty + 1 } : i))
-      const price = precioLinea(p.price, p, false, tipo)
-      return [...c, { productId: p.id, name: p.name, cat: p.cat, price, originalPrice: price, basePrice: p.price, cost: p.cost, qty: 1 }]
+      const localP = p.price
+      const despP = precioDespachoDe(p.price, p.precioDespacho)
+      const price = tipo === 'despacho' ? despP : localP
+      return [...c, { productId: p.id, name: p.name, cat: p.cat, price, originalPrice: price, basePrice: localP, despachoPrice: despP, cost: p.cost, qty: 1 }]
     })
   }
   const addFormat = (p: ProductWithKg, fmt: Format, qty: number) =>
@@ -520,8 +515,10 @@ export default function VentasPage() {
       const e = c.find((i) => i.productId === p.id && i.formatId === fmt.id)
       const itemCost = p.cost * fmt.qty
       if (e) return c.map((i) => (i.productId === p.id && i.formatId === fmt.id ? { ...i, qty: i.qty + qty } : i))
-      const price = precioLinea(fmt.price, p, true, tipo)
-      return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price, originalPrice: price, basePrice: fmt.price, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
+      const localP = fmt.price
+      const despP = precioFormatoCanal(fmt, 'despacho')
+      const price = tipo === 'despacho' ? despP : localP
+      return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price, originalPrice: price, basePrice: localP, despachoPrice: despP, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
     })
   // Venta a granel: cantidad arbitraria (kg) con precio por tramo. Descuenta stock fraccionado.
   const addGranel = (p: ProductWithKg, amountBase: number, localPrice: number, label: string) => {
@@ -530,18 +527,18 @@ export default function VentasPage() {
       toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock} ${p.unit}`)
       return
     }
-    const price = precioLinea(localPrice, p, true, tipo)
-    setCart((c) => [...c, { productId: p.id, name: `${p.name} · ${label}`, baseName: p.name, displayFormat: label, cat: p.cat, price, originalPrice: price, basePrice: localPrice, cost: Math.round(p.cost * amountBase), qty: 1, formatId: `granel:${Date.now()}`, baseUnitsPerItem: amountBase, unit: p.unit }])
+    // El granel se cotiza con precio local por tramo; en despacho mantiene ese valor.
+    const price = localPrice
+    setCart((c) => [...c, { productId: p.id, name: `${p.name} · ${label}`, baseName: p.name, displayFormat: label, cat: p.cat, price, originalPrice: price, basePrice: localPrice, despachoPrice: localPrice, cost: Math.round(p.cost * amountBase), qty: 1, formatId: `granel:${Date.now()}`, baseUnitsPerItem: amountBase, unit: p.unit }])
   }
 
-  // Cambiar local↔despacho recalcula los precios del carrito al instante.
+  // Cambiar local↔despacho recalcula los precios del carrito al instante,
+  // usando el precio de cada canal que guardamos en la línea.
   const applyTipo = (t: 'local' | 'despacho') => {
     setTipo(t)
     setCart((c) =>
       c.map((i) => {
-        const prod = products.find((x) => x.id === i.productId)
-        const base = i.basePrice ?? i.originalPrice ?? i.price
-        const price = precioLinea(base, prod, !!i.formatId, t)
+        const price = t === 'despacho' ? (i.despachoPrice ?? i.basePrice ?? i.price) : (i.basePrice ?? i.price)
         return { ...i, price, originalPrice: price }
       }),
     )
@@ -640,7 +637,7 @@ export default function VentasPage() {
             {/* Panel de tramos (chips de 1 toque) al tocar un producto con formatos */}
             {mFmtFor && (() => {
               const p = mFmtFor
-              const fmts = getFormats(p.id)
+              const fmts = getFormats(p.id).filter((f) => formatoEnCanal(f.canal, tipo))
               return (
                 <div style={{ background: 'var(--surface)', border: '1px solid var(--primary)', borderRadius: 16, padding: 16, boxShadow: 'var(--sh-2)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -651,11 +648,14 @@ export default function VentasPage() {
                     <button className="btn btn-ghost btn-icon" onClick={() => setMFmtFor(null)} aria-label="Cerrar"><Icon name="x" size={16} /></button>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {fmts.length === 0 && !UNIT_IS_WEIGHT(p.unit) && (
+                      <span style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600 }}>No se vende en {tipo === 'despacho' ? 'despacho' : 'local'}</span>
+                    )}
                     {fmts.map((f) => {
                       const ok = maxUnitsForFormat(p, f.id) > 0
                       return (
                         <button key={f.id} disabled={!ok} onClick={() => addFormat(p, f, 1)} className="chip" style={{ border: '1px solid var(--line)', background: ok ? 'var(--surface-3)' : 'var(--surface)', color: ok ? 'var(--ink)' : 'var(--ink-3)', padding: '9px 13px', cursor: ok ? 'pointer' : 'not-allowed', opacity: ok ? 1 : 0.5, fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5 }}>
-                          {f.name} · {fmtCLP(f.price)}
+                          {f.name} · {fmtCLP(precioFormatoCanal(f, tipo))}
                         </button>
                       )
                     })}
@@ -908,7 +908,7 @@ export default function VentasPage() {
             </div>
           </div>
           <div className="card-pad">
-            <ProductPicker onPick={add} onPickFormat={addFormat} onPickGranel={addGranel} />
+            <ProductPicker tipo={tipo} onPick={add} onPickFormat={addFormat} onPickGranel={addGranel} />
           </div>
         </div>
 

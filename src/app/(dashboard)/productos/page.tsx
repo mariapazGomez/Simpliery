@@ -8,8 +8,8 @@ import { fmtCLP, fmtNum, fmtPct, precioDespachoDe } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInput, Modal } from '@/components/ui'
 import { FormatManagerModal } from '@/components/formatos'
-import { PRODUCT_UNITS } from '@/types'
-import type { Product } from '@/types'
+import { PRODUCT_UNITS, CANALES } from '@/types'
+import type { Product, CanalVenta } from '@/types'
 
 type ProductWithExtras = Product & { photo?: string; kgPerUnit?: number; hasFormats?: boolean }
 
@@ -18,6 +18,8 @@ interface PendingVariant {
   name: string
   qty: number
   price: number
+  canal: CanalVenta
+  precioDespacho?: number
 }
 
 interface FormState {
@@ -43,7 +45,7 @@ const UNIT_ABBREV = (u: string) => (({ kg: 'kg', gramo: 'g', litro: 'L', mililit
 function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0, onVariantsChange }: { cost: number; stock: number; unit?: string; existingCount?: number; onVariantsChange: (v: PendingVariant[]) => void }) {
   const [variants, setVariants] = useState<PendingVariant[]>([])
   const [adding, setAdding] = useState(false)
-  const [nf, setNf] = useState<{ name: string; qty: string; price: string }>({ name: '', qty: '', price: '' })
+  const [nf, setNf] = useState<{ name: string; qty: string; price: string; canal: CanalVenta; precioDespacho: string }>({ name: '', qty: '', price: '', canal: 'ambos', precioDespacho: '' })
   useEffect(() => {
     onVariantsChange(variants)
   }, [variants, onVariantsChange])
@@ -56,8 +58,8 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0
   const vDisp = (qty: number | string) => ((+qty || 0) > 0 ? Math.floor((+stock || 0) / +qty) : 0)
   const addV = () => {
     if (!nf.name || !nf.qty || !nf.price) return
-    setVariants((vs) => [...vs, { id: 'nv' + Date.now(), name: nf.name, qty: +nf.qty, price: +nf.price }])
-    setNf({ name: '', qty: '', price: '' })
+    setVariants((vs) => [...vs, { id: 'nv' + Date.now(), name: nf.name, qty: +nf.qty, price: +nf.price, canal: nf.canal, precioDespacho: nf.canal === 'ambos' && nf.precioDespacho ? +nf.precioDespacho : undefined }])
+    setNf({ name: '', qty: '', price: '', canal: 'ambos', precioDespacho: '' })
     setAdding(false)
   }
 
@@ -86,7 +88,12 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0
             <tbody>
               {variants.map((v) => (
                 <tr key={v.id}>
-                  <td style={{ fontWeight: 700 }}>{v.name}</td>
+                  <td style={{ fontWeight: 700 }}>
+                    {v.name}
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--ink-3)', marginLeft: 6 }}>
+                      · {CANALES.find((c) => c.value === v.canal)?.short || 'Ambos'}{v.canal === 'ambos' && v.precioDespacho ? ` · online ${fmtCLP(v.precioDespacho)}` : ''}
+                    </span>
+                  </td>
                   <td className="num tnum">{v.qty} {UNIT_ABBREV(unit)}</td>
                   <td className="num tnum">{fmtCLP(v.price)}</td>
                   <td className="num tnum muted">{fmtCLP(vCost(v.qty))}</td>
@@ -109,7 +116,7 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0
       {adding ? (
         <div style={{ padding: '13px', background: 'var(--surface-3)', borderRadius: 12, border: '1px dashed var(--primary)' }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-700)', marginBottom: 10 }}>Nueva variante</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 9, marginBottom: 9 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 9, marginBottom: 9 }}>
             <label className="field">
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)' }}>Nombre</span>
               <input className="input" value={nf.name} onChange={(e) => setNf((f) => ({ ...f, name: e.target.value }))} placeholder="Pack 6 unidades" autoFocus style={{ fontSize: 13.5 }} />
@@ -118,10 +125,24 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)' }}>Cantidad ({UNIT_ABBREV(unit)})</span>
               <input className="input tnum" type="number" step={UNIT_STEP(unit)} value={nf.qty} onChange={(e) => setNf((f) => ({ ...f, qty: e.target.value }))} placeholder={isW ? '0.5' : '6'} style={{ fontSize: 13.5 }} />
             </label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: nf.canal === 'ambos' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 9, marginBottom: 9 }}>
             <label className="field">
-              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)' }}>Precio ($)</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)' }}>¿Dónde se vende?</span>
+              <select className="select" value={nf.canal} onChange={(e) => setNf((f) => ({ ...f, canal: e.target.value as CanalVenta }))} style={{ fontSize: 13.5 }}>
+                {CANALES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-2)' }}>{nf.canal === 'despacho' ? 'Precio online ($)' : nf.canal === 'ambos' ? 'Precio local ($)' : 'Precio ($)'}</span>
               <input className="input tnum" type="number" value={nf.price} onChange={(e) => setNf((f) => ({ ...f, price: e.target.value }))} placeholder="2000" style={{ fontSize: 13.5 }} />
             </label>
+            {nf.canal === 'ambos' && (
+              <label className="field">
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--info)' }}>Precio online ($)</span>
+                <input className="input tnum" type="number" value={nf.precioDespacho} onChange={(e) => setNf((f) => ({ ...f, precioDespacho: e.target.value }))} placeholder="igual al local" style={{ fontSize: 13.5 }} />
+              </label>
+            )}
           </div>
           {nf.qty && nf.price && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -143,7 +164,7 @@ function VariantsInlineBuilder({ cost, stock, unit = 'Unidad', existingCount = 0
               <Icon name="check" size={14} />
               Agregar variante
             </button>
-            <button className="btn btn-ghost" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => { setAdding(false); setNf({ name: '', qty: '', price: '' }) }}>
+            <button className="btn btn-ghost" style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => { setAdding(false); setNf({ name: '', qty: '', price: '', canal: 'ambos', precioDespacho: '' }) }}>
               Cancelar
             </button>
           </div>
@@ -433,7 +454,7 @@ export default function ProductosPage() {
      (sin adivinar el id ni esperar con setTimeout → así no quedan variantes huérfanas). */
   const handleAdd = (data: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'> & { photo?: string }, variants: PendingVariant[] = []) => {
     const id = addProduct(data)
-    variants.forEach((v) => addFormat(id, { name: v.name, qty: v.qty, price: v.price }))
+    variants.forEach((v) => addFormat(id, { name: v.name, qty: v.qty, price: v.price, canal: v.canal, precioDespacho: v.precioDespacho }))
   }
 
   /* Edición de producto: guarda los cambios Y agrega las variantes nuevas del builder
@@ -441,7 +462,7 @@ export default function ProductosPage() {
   const handleEdit = (data: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'> & { photo?: string }, variants: PendingVariant[] = []) => {
     if (!edit) return
     updateProduct(edit.id, data as Partial<Product>)
-    variants.forEach((v) => addFormat(edit.id, { name: v.name, qty: v.qty, price: v.price }))
+    variants.forEach((v) => addFormat(edit.id, { name: v.name, qty: v.qty, price: v.price, canal: v.canal, precioDespacho: v.precioDespacho }))
   }
 
   /* Eliminar producto (con confirmación) — limpia sus variantes; no afecta ventas. */

@@ -7,7 +7,7 @@ import { useFormats } from '@/lib/formats-store'
 import { fmtCLP, granelInputUnit, granelToBase, baseToSmall, precioPorTramo } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { Modal } from '@/components/ui'
-import type { Product, Format } from '@/types'
+import { CANALES, type Product, type Format, type CanalVenta } from '@/types'
 
 /**
  * El prototipo añade `kgPerUnit` al producto. El tipo `Product` de la fundación
@@ -34,8 +34,8 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
   const hasKg = +kgPerUnit > 0 && !isWeight
 
   // Formulario de nueva variante
-  const EMPTY = { name: '', qty: '', price: '' }
-  const [newFmt, setNewFmt] = useState<{ name: string; qty: string; price: string }>(EMPTY)
+  const EMPTY = { name: '', qty: '', price: '', canal: 'ambos' as CanalVenta, precioDespacho: '' }
+  const [newFmt, setNewFmt] = useState<{ name: string; qty: string; price: string; canal: CanalVenta; precioDespacho: string }>(EMPTY)
   const [adding, setAdding] = useState(false)
 
   const totalKg = +kgPerUnit > 0 ? +(+stock * +kgPerUnit).toFixed(2) : 0
@@ -49,7 +49,13 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
   const addVariant = () => {
     if (!newFmt.name || !newFmt.qty || !newFmt.price) return
     if (!enabled) toggleFormats(product.id, true)
-    addFormat(product.id, { name: newFmt.name, qty: +newFmt.qty, price: +newFmt.price })
+    addFormat(product.id, {
+      name: newFmt.name,
+      qty: +newFmt.qty,
+      price: +newFmt.price,
+      canal: newFmt.canal,
+      precioDespacho: newFmt.canal !== 'local' && newFmt.precioDespacho ? +newFmt.precioDespacho : undefined,
+    })
     setNewFmt(EMPTY)
     setAdding(false)
   }
@@ -162,9 +168,11 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
                 <thead>
                   <tr>
                     <th>Nombre</th>
+                    <th>Canal</th>
                     <th className="num">{unitLabel}</th>
                     {hasKg && <th className="num">Kilos</th>}
                     <th className="num">Precio venta</th>
+                    <th className="num">Online</th>
                     <th className="num">Costo</th>
                     <th className="num">Margen $</th>
                     <th className="num">Margen %</th>
@@ -184,6 +192,11 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
                         <td>
                           <input style={{ border: 'none', background: 'none', fontWeight: 700, fontSize: 14, width: '100%', outline: 'none', padding: '4px 0' }} value={f.name} onChange={(e) => updateFormat(f.id, { name: e.target.value })} />
                         </td>
+                        <td>
+                          <select value={f.canal || 'ambos'} onChange={(e) => updateFormat(f.id, { canal: e.target.value as CanalVenta })} style={{ border: '1px solid var(--line)', borderRadius: 7, padding: '4px 6px', fontSize: 12.5, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)' }}>
+                            {CANALES.map((c) => <option key={c.value} value={c.value}>{c.short}</option>)}
+                          </select>
+                        </td>
                         <td className="num">
                           <input className="tnum" type="number" step={unitStep} style={{ border: 'none', background: 'none', fontWeight: 700, fontSize: 14, width: 70, textAlign: 'right', outline: 'none', padding: '4px 0' }} value={f.qty} onChange={(e) => updateFormat(f.id, { qty: +e.target.value || 0 })} />
                           <span style={{ fontSize: 11, color: 'var(--ink-3)', marginLeft: 2 }}>{unitAbbrev}</span>
@@ -194,6 +207,14 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
                             <span className="pre" style={{ padding: '0 2px 0 8px', fontSize: 12 }}>$</span>
                             <input className="tnum" type="number" value={f.price} style={{ padding: '5px 8px 5px 2px', fontSize: 13.5, textAlign: 'right' }} onChange={(e) => updateFormat(f.id, { price: +e.target.value || 0 })} />
                           </div>
+                        </td>
+                        <td className="num">
+                          {(f.canal || 'ambos') === 'ambos' ? (
+                            <div className="input-pre" style={{ maxWidth: 100, marginLeft: 'auto' }}>
+                              <span className="pre" style={{ padding: '0 2px 0 8px', fontSize: 12 }}>$</span>
+                              <input className="tnum" type="number" value={f.precioDespacho ?? ''} placeholder="= local" style={{ padding: '5px 8px 5px 2px', fontSize: 13.5, textAlign: 'right' }} onChange={(e) => updateFormat(f.id, { precioDespacho: e.target.value ? +e.target.value : undefined })} />
+                            </div>
+                          ) : <span className="muted" style={{ fontSize: 12 }}>—</span>}
                         </td>
                         <td className="num tnum muted">{fmtCLP(costo)}</td>
                         <td className="num tnum" style={{ fontWeight: 800, color: margen > 0 ? 'var(--primary-700)' : 'var(--danger)' }}>{fmtCLP(margen)}</td>
@@ -226,7 +247,7 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
           {adding ? (
             <div style={{ marginTop: 12, padding: '16px', background: 'var(--surface-3)', borderRadius: 13, border: '1px dashed var(--primary)' }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--primary-700)', marginBottom: 12 }}>Nueva variante</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 10 }}>
                 <label className="field">
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-2)' }}>Nombre de la variante</span>
                   <input className="input" value={newFmt.name} onChange={(e) => setNewFmt((f) => ({ ...f, name: e.target.value }))} placeholder="Ej: Pack 6 unidades" autoFocus style={{ fontSize: 14 }} />
@@ -236,10 +257,24 @@ export function FormatManagerModal({ product, onClose }: { product: ProductWithK
                   <input className="input tnum" type="number" step={unitStep} value={newFmt.qty} onChange={(e) => setNewFmt((f) => ({ ...f, qty: e.target.value }))} placeholder={isWeight ? '0.5' : '6'} style={{ fontSize: 14 }} />
                   {newFmt.qty && hasKg && <span className="hint">= {+(+kgPerUnit * +newFmt.qty).toFixed(3)} kg</span>}
                 </label>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: newFmt.canal === 'ambos' ? '1fr 1fr 1fr' : '1fr 1fr', gap: 10, marginBottom: 10 }}>
                 <label className="field">
-                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-2)' }}>Precio de venta ($)</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-2)' }}>¿Dónde se vende?</span>
+                  <select className="select" value={newFmt.canal} onChange={(e) => setNewFmt((f) => ({ ...f, canal: e.target.value as CanalVenta }))} style={{ fontSize: 14 }}>
+                    {CANALES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  </select>
+                </label>
+                <label className="field">
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-2)' }}>{newFmt.canal === 'despacho' ? 'Precio online ($)' : newFmt.canal === 'ambos' ? 'Precio local ($)' : 'Precio de venta ($)'}</span>
                   <input className="input tnum" type="number" value={newFmt.price} onChange={(e) => setNewFmt((f) => ({ ...f, price: e.target.value }))} placeholder="2000" style={{ fontSize: 14 }} />
                 </label>
+                {newFmt.canal === 'ambos' && (
+                  <label className="field">
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--info)' }}>Precio online ($)</span>
+                    <input className="input tnum" type="number" value={newFmt.precioDespacho} onChange={(e) => setNewFmt((f) => ({ ...f, precioDespacho: e.target.value }))} placeholder="igual al local" style={{ fontSize: 14 }} />
+                  </label>
+                )}
               </div>
               {/* Vista previa en vivo */}
               {newFmt.qty &&

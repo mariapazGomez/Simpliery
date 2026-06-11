@@ -69,14 +69,20 @@ export function precioDespachoDe(localPrice: number, precioDespacho: number | nu
   return typeof precioDespacho === 'number' && precioDespacho > 0 ? precioDespacho : localPrice
 }
 
-/** Precio de despacho de un FORMATO: aplica la misma proporción local→despacho del producto base. */
-export function precioDespachoFormato(
-  fmtPrice: number,
-  localPrice: number,
-  precioDespacho: number | null | undefined,
+/** Precio de un FORMATO según el canal: online usa su `precioDespacho` propio (si lo definió),
+ *  si no, el mismo `price` local. */
+export function precioFormatoCanal(
+  f: { price: number; precioDespacho?: number | null },
+  tipo: 'local' | 'despacho',
 ): number {
-  if (!(typeof precioDespacho === 'number' && precioDespacho > 0) || localPrice <= 0) return fmtPrice
-  return Math.round((fmtPrice * (precioDespacho / localPrice)) / 10) * 10
+  if (tipo !== 'despacho') return f.price
+  return typeof f.precioDespacho === 'number' && f.precioDespacho > 0 ? f.precioDespacho : f.price
+}
+
+/** ¿El formato se ofrece en este canal? (canal vacío = 'ambos', retrocompatible). */
+export function formatoEnCanal(canal: string | null | undefined, tipo: 'local' | 'despacho'): boolean {
+  const c = canal || 'ambos'
+  return c === 'ambos' || c === tipo
 }
 
 export function stockState(p: Pick<Product, 'stock' | 'min'>): StockState {

@@ -204,12 +204,25 @@ export interface Credito {
 }
 
 // ---------- Formatos (multi-formato de venta) ----------
+export type CanalVenta = 'local' | 'despacho' | 'ambos'
+
+/** Opciones de canal para selects. */
+export const CANALES: { value: CanalVenta; label: string; short: string }[] = [
+  { value: 'ambos', label: 'Local y online', short: 'Ambos' },
+  { value: 'local', label: 'Solo local', short: 'Local' },
+  { value: 'despacho', label: 'Solo online', short: 'Online' },
+]
+
 export interface Format {
   id: string
   productId: number
   name: string
   qty: number
   price: number
+  /** Dónde se vende este formato. Vacío = 'ambos' (retrocompatible). */
+  canal?: CanalVenta
+  /** Precio en despacho/online. Vacío = mismo `price`. */
+  precioDespacho?: number
 }
 
 // ---------- Despachos (entregas a domicilio + integración OptiRoute) ----------
