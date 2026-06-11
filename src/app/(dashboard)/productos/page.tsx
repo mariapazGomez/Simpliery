@@ -8,6 +8,7 @@ import { fmtCLP, fmtNum, fmtPct, precioDespachoDe } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInput, Modal } from '@/components/ui'
 import { FormatManagerModal } from '@/components/formatos'
+import { PRODUCT_UNITS } from '@/types'
 import type { Product } from '@/types'
 
 type ProductWithExtras = Product & { photo?: string; kgPerUnit?: number; hasFormats?: boolean }
@@ -32,7 +33,7 @@ interface FormState {
   precioDespacho: number | ''
 }
 
-const UNIT_OPTIONS = ['Unidad', 'kg', 'gramo', 'litro', 'mililitro', 'caja', 'paquete']
+const UNIT_OPTIONS: readonly string[] = PRODUCT_UNITS
 const UNIT_IS_WEIGHT = (u: string) => ['kg', 'gramo', 'litro', 'mililitro'].includes(u)
 const UNIT_STEP = (u: string) => (UNIT_IS_WEIGHT(u) ? '0.001' : '1')
 const UNIT_LABEL = (u: string) => (({ kg: 'kg', gramo: 'gramos', litro: 'litros', mililitro: 'ml', Unidad: 'unidades', caja: 'cajas', paquete: 'paquetes' } as Record<string, string>)[u] || u)
@@ -263,7 +264,7 @@ function ProductForm({ initial, onSave, onClose }: { initial?: ProductWithExtras
           </Field>
           <Field label="Unidad base" hint="La unidad con la que controlas el stock">
             <select className="select" value={f.unit} onChange={(e) => set('unit', e.target.value)}>
-              {UNIT_OPTIONS.map((u) => (
+              {(UNIT_OPTIONS.includes(f.unit) ? UNIT_OPTIONS : [f.unit, ...UNIT_OPTIONS]).map((u) => (
                 <option key={u}>{u}</option>
               ))}
             </select>
@@ -388,23 +389,31 @@ function EditableCell({ value, onSave }: { value: number; onSave: (v: number) =>
 
 /* ---------- Pantalla Productos ---------- */
 export default function ProductosPage() {
-  const { products, addProduct, updateProduct, settings, categorias, addCategoria } = useStore()
-  const { getFormats, productHasFormats, addFormat, toggleFormats } = useFormats()
+  const { products, addProduct, updateProduct, deleteProduct, settings, categorias, addCategoria, renameCategoria, deleteCategoria, reorderCategorias } = useStore()
+  const { getFormats, productHasFormats, addFormat, toggleFormats, deleteFormat } = useFormats()
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('Todas')
   const [form, setForm] = useState(false)
   const [edit, setEdit] = useState<ProductWithExtras | null>(null)
   const [fmtModal, setFmtModal] = useState<ProductWithExtras | null>(null)
   const [sort, setSort] = useState<{ k: keyof Product; dir: number }>({ k: 'name', dir: 1 })
+  const [gestionCats, setGestionCats] = useState(false)
+  const [dragCat, setDragCat] = useState<string | null>(null)
+  const [dragRow, setDragRow] = useState<number | null>(null)
+  const [overRow, setOverRow] = useState<number | null>(null)
   const cats = useMemo(() => ['Todas', ...categorias], [categorias])
 
+  // Reordenar productos solo con UNA categoría elegida y sin búsqueda activa.
+  const reordenando = cat !== 'Todas' && q.trim() === ''
   const filtered = products.filter((p) => (cat === 'Todas' || p.cat === cat) && p.name.toLowerCase().includes(q.toLowerCase()))
-  const list = [...filtered].sort((a, b) => {
-    const k = sort.k
-    const av = a[k]
-    const bv = b[k]
-    return (typeof av === 'string' ? av.localeCompare(bv as string) : (av as number) - (bv as number)) * sort.dir
-  })
+  const list = reordenando
+    ? [...filtered].sort((a, b) => (a.orden ?? 1e9) - (b.orden ?? 1e9) || a.name.localeCompare(b.name))
+    : [...filtered].sort((a, b) => {
+        const k = sort.k
+        const av = a[k]
+        const bv = b[k]
+        return (typeof av === 'string' ? av.localeCompare(bv as string) : (av as number) - (bv as number)) * sort.dir
+      })
   const setS = (k: keyof Product) => setSort((s) => (s.k === k ? { k, dir: -s.dir } : { k, dir: 1 }))
   const Th = ({ k, children, num }: { k: keyof Product; children: ReactNode; num?: boolean }) => (
     <th className={num ? 'num' : ''} style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setS(k)}>
@@ -422,6 +431,48 @@ export default function ProductosPage() {
         toggleFormats(newId, true)
         variants.forEach((v) => addFormat(newId, { name: v.name, qty: v.qty, price: v.price }))
       }, 50)
+    }
+  }
+
+  /* Eliminar producto (con confirmación) — limpia sus variantes; no afecta ventas. */
+  const handleDelete = (p: ProductWithExtras) => {
+    if (!window.confirm(`¿Eliminar "${p.name}"? Esta acción no se puede deshacer.\n\nNo afecta tus ventas ya registradas.`)) return
+    getFormats(p.id).forEach((f) => deleteFormat(f.id))
+    toggleFormats(p.id, false)
+    deleteProduct(p.id)
+  }
+
+  /* Reordenar productos dentro de la categoría (drag de filas) → persiste `orden`. */
+  const dropRow = (targetId: number) => {
+    if (dragRow == null || dragRow === targetId) { setDragRow(null); setOverRow(null); return }
+    const ordered = [...list]
+    const from = ordered.findIndex((p) => p.id === dragRow)
+    const to = ordered.findIndex((p) => p.id === targetId)
+    if (from >= 0 && to >= 0) {
+      const [moved] = ordered.splice(from, 1)
+      ordered.splice(to, 0, moved)
+      ordered.forEach((p, i) => { if (p.orden !== i + 1) updateProduct(p.id, { orden: i + 1 }) })
+    }
+    setDragRow(null); setOverRow(null)
+  }
+
+  /* Reordenar categorías (drag de chips, en modo gestión) → manda en el catálogo. */
+  const dropCat = (target: string) => {
+    if (!dragCat || dragCat === target) { setDragCat(null); return }
+    const order = categorias.filter((x) => x !== dragCat)
+    const i = order.indexOf(target)
+    order.splice(i < 0 ? order.length : i, 0, dragCat)
+    reorderCategorias(order)
+    setDragCat(null)
+  }
+  const renombrarCat = (c: string) => {
+    const n = window.prompt(`Renombrar la categoría "${c}":`, c)
+    if (n && n.trim() && n.trim() !== c) renameCategoria(c, n.trim())
+  }
+  const borrarCat = (c: string) => {
+    if (window.confirm(`¿Borrar la categoría "${c}"? Los productos que la usen pasarán a "Otros".`)) {
+      if (cat === c) setCat('Todas')
+      deleteCategoria(c)
     }
   }
 
@@ -447,14 +498,38 @@ export default function ProductosPage() {
         <span style={{ fontSize: 12, color: 'var(--primary-700)', fontWeight: 700, whiteSpace: 'nowrap' }}>Botón "Variantes" →</span>
       </div>
 
-      {/* Filtros de categoría */}
-      <div style={{ display: 'flex', gap: 7, marginBottom: 16, overflowX: 'auto', paddingBottom: 2 }}>
-        {cats.map((c) => (
-          <button key={c} onClick={() => setCat(c)} className="chip" style={{ border: '1px solid var(--line)', whiteSpace: 'nowrap', cursor: 'pointer', background: cat === c ? 'var(--primary)' : 'var(--surface)', color: cat === c ? '#fff' : 'var(--ink-2)', padding: '7px 14px', fontSize: 13 }}>
-            {c !== 'Todas' && <CatDot cat={c} />}
-            {c}
-          </button>
-        ))}
+      {/* Filtros / gestión de categoría */}
+      <div style={{ display: 'flex', gap: 7, marginBottom: gestionCats ? 8 : 16, overflowX: 'auto', paddingBottom: 2, alignItems: 'center' }}>
+        {cats.map((c) => {
+          const activo = cat === c
+          const manage = gestionCats && c !== 'Todas'
+          return (
+            <div
+              key={c}
+              draggable={manage}
+              onDragStart={manage ? () => setDragCat(c) : undefined}
+              onDragOver={manage ? (e) => e.preventDefault() : undefined}
+              onDrop={manage ? () => dropCat(c) : undefined}
+              onClick={() => setCat(c)}
+              className="chip"
+              style={{ border: '1px solid ' + (activo ? 'var(--primary)' : 'var(--line)'), whiteSpace: 'nowrap', cursor: manage ? 'grab' : 'pointer', background: activo ? 'var(--primary)' : 'var(--surface)', color: activo ? '#fff' : 'var(--ink-2)', padding: '7px 12px', fontSize: 13, gap: 6, flexShrink: 0, opacity: dragCat === c ? 0.5 : 1 }}
+            >
+              {manage && <span style={{ opacity: 0.55, cursor: 'grab' }}>⠿</span>}
+              {c !== 'Todas' && <CatDot cat={c} />}
+              {c}
+              {manage && (
+                <>
+                  <span onClick={(e) => { e.stopPropagation(); renombrarCat(c) }} title="Renombrar" style={{ display: 'grid', placeItems: 'center', cursor: 'pointer', opacity: 0.85 }}>
+                    <Icon name="edit" size={12} />
+                  </span>
+                  <span onClick={(e) => { e.stopPropagation(); borrarCat(c) }} title="Borrar" style={{ display: 'grid', placeItems: 'center', cursor: 'pointer', color: activo ? '#fff' : 'var(--danger)' }}>
+                    <Icon name="x" size={13} />
+                  </span>
+                </>
+              )}
+            </div>
+          )
+        })}
         <button
           onClick={() => {
             const n = window.prompt('Nombre de la nueva categoría:')
@@ -464,12 +539,32 @@ export default function ProductosPage() {
             setCat(name)
           }}
           className="chip"
-          style={{ border: '1px dashed var(--primary)', whiteSpace: 'nowrap', cursor: 'pointer', background: 'var(--primary-tint)', color: 'var(--primary-700)', padding: '7px 14px', fontSize: 13, flexShrink: 0 }}
+          style={{ border: '1px dashed var(--primary)', whiteSpace: 'nowrap', cursor: 'pointer', background: 'var(--primary-tint)', color: 'var(--primary-700)', padding: '7px 12px', fontSize: 13, flexShrink: 0 }}
         >
           <Icon name="plus" size={13} />
-          Nueva categoría
+          Nueva
+        </button>
+        <button
+          onClick={() => setGestionCats((v) => !v)}
+          className="chip"
+          title="Renombrar, borrar y ordenar categorías"
+          style={{ border: '1px solid ' + (gestionCats ? 'var(--primary)' : 'var(--line)'), whiteSpace: 'nowrap', cursor: 'pointer', background: gestionCats ? 'var(--primary-tint)' : 'var(--surface)', color: gestionCats ? 'var(--primary-700)' : 'var(--ink-2)', padding: '7px 12px', fontSize: 13, flexShrink: 0 }}
+        >
+          <Icon name={gestionCats ? 'check' : 'config'} size={13} />
+          {gestionCats ? 'Listo' : 'Gestionar'}
         </button>
       </div>
+      {gestionCats && (
+        <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+          ⠿ Arrastra las categorías para ordenarlas · ✏️ renombrar · ✕ borrar. Ese orden se usa también en el catálogo de ventas.
+        </div>
+      )}
+
+      {reordenando && (
+        <div style={{ fontSize: 12.5, color: 'var(--primary-700)', fontWeight: 700, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          ⠿ Arrastra las filas para ordenar los productos de “{cat}”. Ese orden se ve igual en el catálogo de ventas.
+        </div>
+      )}
 
       <div className="card">
         <div style={{ overflowX: 'auto' }}>
@@ -501,8 +596,21 @@ export default function ProductosPage() {
                   </div>
                 )
                 return (
-                  <tr key={p.id}>
-                    <td style={{ width: 52, paddingRight: 0 }}>{photoEl}</td>
+                  <tr
+                    key={p.id}
+                    onDragOver={reordenando ? (e) => { e.preventDefault(); if (overRow !== p.id) setOverRow(p.id) } : undefined}
+                    onDrop={reordenando ? () => dropRow(p.id) : undefined}
+                    onDragEnd={reordenando ? () => { setDragRow(null); setOverRow(null) } : undefined}
+                    style={reordenando ? { opacity: dragRow === p.id ? 0.4 : 1, boxShadow: overRow === p.id && dragRow !== p.id ? 'inset 0 2px 0 var(--primary)' : undefined } : undefined}
+                  >
+                    <td style={{ width: 52, paddingRight: 0 }}>
+                      {reordenando ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span draggable onDragStart={() => setDragRow(p.id)} title="Arrastra para ordenar" style={{ cursor: 'grab', color: 'var(--ink-3)', fontSize: 15, padding: '0 2px' }}>⠿</span>
+                          {photoEl}
+                        </div>
+                      ) : photoEl}
+                    </td>
                     <td>
                       <div style={{ fontWeight: 700 }}>{p.name}</div>
                       {hasFmt && (
@@ -530,9 +638,14 @@ export default function ProductosPage() {
                       </button>
                     </td>
                     <td>
-                      <button className="btn btn-ghost btn-icon" onClick={() => setEdit(pe)} title="Editar">
-                        <Icon name="edit" size={15} />
-                      </button>
+                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-ghost btn-icon" onClick={() => setEdit(pe)} title="Editar">
+                          <Icon name="edit" size={15} />
+                        </button>
+                        <button className="btn btn-ghost btn-icon" onClick={() => handleDelete(pe)} title="Eliminar" style={{ color: 'var(--danger)' }}>
+                          <Icon name="trash" size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )

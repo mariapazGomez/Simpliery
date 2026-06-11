@@ -20,7 +20,12 @@ export interface Product {
   kgPerUnit?: number
   /** Precio fijo para venta por despacho. Si no se define (o 0), usa el precio local. */
   precioDespacho?: number
+  /** Orden manual dentro de su categoría (para el catálogo de ventas). Menor = primero. */
+  orden?: number
 }
+
+/** Unidades de medida válidas para un producto (controlan el stock). */
+export const PRODUCT_UNITS = ['Unidad', 'kg', 'gramo', 'litro', 'mililitro', 'caja', 'paquete'] as const
 
 export interface SaleItem {
   productId: number

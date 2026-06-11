@@ -10,7 +10,6 @@ import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
 import { FormatPicker } from '@/components/formatos'
 import { ComprobanteModal } from '@/components/comprobante'
-import { CATEGORIES } from '@/lib/data'
 import type { Product, Format, Cliente, SaleItem, Sale } from '@/types'
 
 type ProductWithKg = Product & { kgPerUnit?: number; photo?: string }
@@ -59,13 +58,19 @@ function useIsMobile(bp = 760) {
 }
 
 function ProductPicker({ onPick, onPickFormat }: { onPick: (p: ProductWithKg) => void; onPickFormat: (p: ProductWithKg, fmt: Format, qty: number) => void }) {
-  const { products } = useStore()
+  const { products, categorias } = useStore()
   const { productHasFormats } = useFormats()
   const [cat, setCat] = useState('Todas')
   const [q, setQ] = useState('')
   const [activeFmt, setActiveFmt] = useState<ProductWithKg | null>(null)
-  const cats = useMemo(() => ['Todas', ...new Set([...products.map((p) => p.cat), ...CATEGORIES])], [products])
-  const list = useMemo(() => (products as ProductWithKg[]).filter((p) => (cat === 'Todas' || p.cat === cat) && p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 40), [products, cat, q])
+  const cats = useMemo(() => ['Todas', ...categorias, ...new Set(products.map((p) => p.cat).filter((c) => !categorias.includes(c)))], [categorias, products])
+  const list = useMemo(() => {
+    const idx = (c: string) => { const i = categorias.indexOf(c); return i < 0 ? 999 : i }
+    return (products as ProductWithKg[])
+      .filter((p) => (cat === 'Todas' || p.cat === cat) && p.name.toLowerCase().includes(q.toLowerCase()))
+      .sort((a, b) => idx(a.cat) - idx(b.cat) || (a.orden ?? 1e9) - (b.orden ?? 1e9) || a.name.localeCompare(b.name))
+      .slice(0, 40)
+  }, [products, cat, q, categorias])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
       <SearchBox value={q} onChange={setQ} placeholder="Buscar producto…" width="100%" />
@@ -429,7 +434,7 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
 type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount: number } | null }
 
 export default function VentasPage() {
-  const { registrarVenta, settings, toast, products, rol, addDespacho } = useStore()
+  const { registrarVenta, settings, toast, products, rol, addDespacho, categorias } = useStore()
   const { productHasFormats } = useFormats()
   const isMobile = useIsMobile()
   const verDinero = puedeVerDinero(rol)
@@ -581,8 +586,11 @@ export default function VentasPage() {
 
   // ── Flujo móvil por pasos (estilo Kyte): catálogo → carrito → pago ──
   if (isMobile) {
-    const cats = ['Todas', ...new Set([...products.map((p) => p.cat), ...CATEGORIES])]
-    const list = (products as ProductWithKg[]).filter((p) => (mCat === 'Todas' || p.cat === mCat) && p.name.toLowerCase().includes(mQuery.toLowerCase()))
+    const cats = ['Todas', ...categorias, ...new Set(products.map((p) => p.cat).filter((c) => !categorias.includes(c)))]
+    const idxM = (c: string) => { const i = categorias.indexOf(c); return i < 0 ? 999 : i }
+    const list = (products as ProductWithKg[])
+      .filter((p) => (mCat === 'Todas' || p.cat === mCat) && p.name.toLowerCase().includes(mQuery.toLowerCase()))
+      .sort((a, b) => idxM(a.cat) - idxM(b.cat) || (a.orden ?? 1e9) - (b.orden ?? 1e9) || a.name.localeCompare(b.name))
     const qtyOf = (id: number) => cart.filter((i) => i.productId === id).reduce((a, i) => a + i.qty, 0)
     const totalItems = cart.reduce((a, i) => a + i.qty, 0)
 

@@ -3,12 +3,13 @@
 // ---------- Store global: productos, ventas, inventario, clientes ----------
 // Portado de store.jsx del prototipo.
 
-import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { catColor, stockState, fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PRODUCTS, CATEGORIES } from '@/lib/data'
 import { usePerfil, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
 import { createClient } from '@/lib/supabase/client'
+import { PRODUCT_UNITS } from '@/types'
 import type {
   Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics, Despacho,
 } from '@/types'
@@ -223,6 +224,7 @@ interface StoreValue {
   registrarVenta: (items: SaleItem[], method: string, extra?: RegistrarVentaExtra) => Promise<Sale>
   addProduct: (p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => void
   updateProduct: (id: number, patch: Partial<Product>) => void
+  deleteProduct: (id: number) => void
   reponer: (id: number, qty: number) => void
   ajustarStock: (id: number, nuevo: number, note?: string) => void
   addClientes: (arr: Cliente[]) => void
@@ -237,6 +239,7 @@ interface StoreValue {
   addCategoria: (name: string) => void
   renameCategoria: (oldName: string, nuevo: string) => void
   deleteCategoria: (name: string) => void
+  reorderCategorias: (order: string[]) => void
 }
 
 const Store = createContext<StoreValue | null>(null)
@@ -351,9 +354,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addProduct = useCallback((p: Omit<Product, 'id' | 'margin' | 'marginPct' | 'sold'>) => {
     setProducts((ps) => {
       const id = Math.max(...ps.map((x) => x.id), 0) + 1
-      return [...ps, { ...p, id, margin: p.price - p.cost, marginPct: p.price ? Math.round(((p.price - p.cost) / p.price) * 1000) / 10 : 0, sold: 0 }]
+      const ordenMax = Math.max(0, ...ps.filter((x) => x.cat === p.cat).map((x) => x.orden ?? 0))
+      return [...ps, { ...p, id, orden: ordenMax + 1, margin: p.price - p.cost, marginPct: p.price ? Math.round(((p.price - p.cost) / p.price) * 1000) / 10 : 0, sold: 0 }]
     })
     toast('Producto agregado')
+  }, [setProducts, toast])
+
+  const deleteProduct = useCallback((id: number) => {
+    setProducts((ps) => ps.filter((p) => p.id !== id))
+    toast('Producto eliminado')
   }, [setProducts, toast])
 
   const updateProduct = useCallback((id: number, patch: Partial<Product>) => {
@@ -402,6 +411,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCategorias((cs) => (cs.includes(c) ? cs : [...cs, c]))
   }, [setCategorias])
 
+  // Reordena las categorías (el orden manda en el catálogo de ventas).
+  const reorderCategorias = useCallback((order: string[]) => {
+    setCategorias(order)
+  }, [setCategorias])
+
   const renameCategoria = useCallback((oldName: string, nuevo: string) => {
     const n = nuevo.trim()
     if (!n || n === oldName) return
@@ -420,6 +434,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast(afectados > 0 ? `Categoría eliminada · ${afectados} producto(s) movido(s) a "Otros"` : 'Categoría eliminada')
   }, [products, setCategorias, setProducts, toast])
 
+  // Normaliza UNA vez las unidades mal cargadas (ej. "250g", "x12", "500g") → "Unidad".
+  // Idempotente: una vez corregidas, vuelve a salir sin tocar nada.
+  useEffect(() => {
+    if (!rdyProd) return
+    const valida = (u: string) => (PRODUCT_UNITS as readonly string[]).includes(u)
+    if (products.every((p) => valida(p.unit))) return
+    setProducts((ps) => ps.map((p) => (valida(p.unit) ? p : { ...p, unit: 'Unidad' })))
+  }, [rdyProd, products, setProducts])
+
   // Memoizamos el value: así un cambio de `toasts` (un aviso aparece/desaparece)
   // NO recrea el objeto ni re-renderiza a todos los que usan useStore(). El value
   // solo cambia cuando cambian datos reales (los callbacks ya son estables).
@@ -427,18 +450,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       negocioId, rol,
       products, sales, movements, settings, setSettings, toast, clientes,
-      registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+      registrarVenta, addProduct, updateProduct, deleteProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
       deleteSale, updateSale,
       despachos, addDespacho, updateDespacho,
-      categorias, addCategoria, renameCategoria, deleteCategoria,
+      categorias, addCategoria, renameCategoria, deleteCategoria, reorderCategorias,
     }),
     [
       negocioId, rol,
       products, sales, movements, settings, setSettings, toast, clientes,
-      registrarVenta, addProduct, updateProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+      registrarVenta, addProduct, updateProduct, deleteProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
       deleteSale, updateSale,
       despachos, addDespacho, updateDespacho,
-      categorias, addCategoria, renameCategoria, deleteCategoria,
+      categorias, addCategoria, renameCategoria, deleteCategoria, reorderCategorias,
     ],
   )
 
