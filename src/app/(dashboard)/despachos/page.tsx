@@ -386,14 +386,25 @@ export default function DespachosPage() {
           <option value="enviados">Enviados</option>
         </select>
         <div style={{ flex: 1 }} />
+        {seleccionablesVisibles.length > 0 && (
+          <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={toggleAllVisible}>
+            <Icon name="check" size={15} />
+            {allVisibleSelected ? 'Quitar selección' : `Seleccionar sin enviar (${seleccionablesVisibles.length})`}
+          </button>
+        )}
         <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={actualizarEstados} disabled={enviando}>
           <Icon name="history" size={15} />
           Actualizar estados
         </button>
-        {sel.size > 0 && (
-          <button className="btn btn-ghost" style={{ fontSize: 13 }} onClick={() => setSel(new Set())}>Limpiar selección</button>
-        )}
       </div>
+
+      {/* Sugerencia: marcar varios para envío en lote */}
+      {seleccionablesVisibles.length > 0 && sel.size === 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', background: 'var(--primary-tint)', borderRadius: 11, fontSize: 13, fontWeight: 600, color: 'var(--primary-700)', marginBottom: 12 }}>
+          <Icon name="truck" size={14} />
+          Marca con un check los pedidos que quieras enviar y mándalos todos juntos a OptiRoute.
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="card">
@@ -405,7 +416,7 @@ export default function DespachosPage() {
               <thead>
                 <tr>
                   <th style={{ width: 36 }}>
-                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="Seleccionar visibles sin enviar" style={{ accentColor: 'var(--primary)', width: 15, height: 15 }} />
+                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="Seleccionar visibles sin enviar" style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }} />
                   </th>
                   <th>Pedido</th>
                   <th>Cliente</th>
@@ -421,8 +432,8 @@ export default function DespachosPage() {
               <tbody>
                 {list.map((p) => (
                   <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(p)} onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-3)')} onMouseLeave={(e) => (e.currentTarget.style.background = '')}>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      {!p.optirouteId && <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} style={{ accentColor: 'var(--primary)', width: 15, height: 15 }} />}
+                    <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                      {!p.optirouteId && <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} title="Marcar para enviar a OptiRoute" style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }} />}
                     </td>
                     <td className="tnum" style={{ fontWeight: 700, color: 'var(--ink-2)' }}># {p.boleta}</td>
                     <td>
@@ -457,6 +468,22 @@ export default function DespachosPage() {
           </div>
         )}
       </div>
+
+      {/* Barra de envío en lote — aparece al seleccionar, queda fija abajo */}
+      {sel.size > 0 && (
+        <div style={{ position: 'sticky', bottom: 14, zIndex: 30, marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--surface)', border: '1px solid var(--line-2)', borderRadius: 14, boxShadow: 'var(--sh-3)' }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--primary-tint)', color: 'var(--primary-700)', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{sel.size}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 14.5 }}>{sel.size} pedido{sel.size > 1 ? 's' : ''} seleccionado{sel.size > 1 ? 's' : ''}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600 }}>Listos para enviar a OptiRoute</div>
+          </div>
+          <button className="btn btn-ghost" onClick={() => setSel(new Set())}>Limpiar</button>
+          <button className="btn btn-primary" disabled={enviando} onClick={() => enviarASeleccionados([...sel])}>
+            <Icon name="truck" size={16} />
+            {enviando ? 'Enviando…' : 'Enviar a OptiRoute'}
+          </button>
+        </div>
+      )}
 
       {selected && <PedidoModal pedido={selected} onClose={() => setSelected(null)} onUpdate={updatePedido} onEnviar={(d) => enviarASeleccionados([d.id])} onActualizar={() => actualizarEstados()} />}
     </div>
