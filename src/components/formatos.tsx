@@ -4,7 +4,7 @@
 import { useState, type CSSProperties } from 'react'
 import { useStore } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
-import { fmtCLP } from '@/lib/format'
+import { fmtCLP, granelInputUnit, granelToBase, baseToSmall, precioPorTramo } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { Modal } from '@/components/ui'
 import type { Product, Format } from '@/types'
@@ -439,6 +439,54 @@ export function FormatBreakdown({ product }: { product: ProductWithKg }) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ── GranelSheet: "otra cantidad" para productos por peso con tramos ── */
+export function GranelSheet({ product, formats, onAdd, onCancel }: { product: ProductWithKg; formats: Format[]; onAdd: (amountBase: number, price: number, label: string) => void; onCancel: () => void }) {
+  const small = granelInputUnit(product.unit)
+  const [val, setVal] = useState('')
+  const cantidad = parseFloat(val.replace(',', '.')) || 0
+  const amountBase = granelToBase(product.unit, cantidad)
+  const price = precioPorTramo(amountBase, formats)
+  const over = amountBase > product.stock
+  const stockSmall = baseToSmall(product.unit, product.stock)
+  const presets = [...formats].filter((f) => f.qty > 0).sort((a, b) => a.qty - b.qty).map((f) => baseToSmall(product.unit, f.qty))
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--primary)', borderRadius: 16, padding: 18, boxShadow: 'var(--sh-2)', marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>{product.name}</div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 2 }}>Otra cantidad · quedan {stockSmall} {small}</div>
+        </div>
+        <button className="btn btn-ghost btn-icon" onClick={onCancel} aria-label="Cerrar">
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+      {presets.length > 0 && (
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 10 }}>
+          {presets.map((g) => (
+            <button key={g} className="chip" onClick={() => setVal(String(g))} style={{ border: '1px solid var(--line)', background: cantidad === g ? 'var(--primary-tint)' : 'var(--surface)', color: 'var(--ink-2)', padding: '6px 12px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {g} {small}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="input-pre" style={{ marginBottom: 10 }}>
+        <input className="tnum" inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder={`Cantidad en ${small}`} autoFocus style={{ padding: '11px 4px 11px 13px', fontSize: 15, fontWeight: 700, width: '100%' }} />
+        <span className="pre" style={{ padding: '0 13px 0 4px' }}>{small}</span>
+      </div>
+      {over && (
+        <div style={{ padding: '8px 12px', background: 'var(--danger-tint)', borderRadius: 9, fontSize: 12.5, fontWeight: 700, color: 'var(--danger)', marginBottom: 10 }}>
+          Sin stock suficiente · quedan {stockSmall} {small}
+        </div>
+      )}
+      <button className="btn btn-primary" style={{ width: '100%' }} disabled={cantidad <= 0 || over || price <= 0} onClick={() => onAdd(amountBase, price, `${cantidad} ${small}`)}>
+        <Icon name="plus" size={16} />
+        Agregar · {fmtCLP(price)}
+      </button>
     </div>
   )
 }

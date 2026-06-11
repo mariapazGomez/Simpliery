@@ -1,56 +1,10 @@
 'use client'
 
 // ---------- Formats Store: inventario multi-formato (portado de formats-store.jsx) ----------
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useCallback, type ReactNode } from 'react'
 import { useStore } from '@/lib/store'
+import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import type { Product, Format } from '@/types'
-
-function seedFormats(products: Product[]): Format[] {
-  const formats: Format[] = []
-  products
-    .filter((p) => p.cat === 'Huevos')
-    .forEach((p) => {
-      const cpu = p.cost
-      formats.push(
-        { id: `f-${p.id}-1`, productId: p.id, name: 'Pack 6 unidades', qty: 6, price: Math.round(cpu * 6 * 1.45) },
-        { id: `f-${p.id}-2`, productId: p.id, name: 'Docena 12 unidades', qty: 12, price: Math.round(cpu * 12 * 1.42) },
-        { id: `f-${p.id}-3`, productId: p.id, name: 'Bandeja 30 unidades', qty: 30, price: p.price },
-        { id: `f-${p.id}-4`, productId: p.id, name: 'Pack 90 unidades', qty: 90, price: Math.round(p.price * 2.9) },
-        { id: `f-${p.id}-5`, productId: p.id, name: 'Caja 180 unidades', qty: 180, price: Math.round(p.price * 5.5) },
-      )
-    })
-  products
-    .filter((p) => p.cat === 'Frutos secos')
-    .forEach((p) => {
-      const pu = p.unit || ''
-      formats.push(
-        { id: `f-${p.id}-1`, productId: p.id, name: `1 ${pu}`, qty: 1, price: p.price },
-        { id: `f-${p.id}-2`, productId: p.id, name: `2 ${pu}`, qty: 2, price: Math.round(p.price * 2 * 0.97) },
-        { id: `f-${p.id}-3`, productId: p.id, name: `5 ${pu}`, qty: 5, price: Math.round(p.price * 5 * 0.93) },
-        { id: `f-${p.id}-4`, productId: p.id, name: `Caja 10 ${pu}`, qty: 10, price: Math.round(p.price * 10 * 0.88) },
-      )
-    })
-  products
-    .filter((p) => p.cat === 'Quesos' || p.cat === 'Queso de cabra')
-    .forEach((p) => {
-      const pu = p.unit || ''
-      formats.push(
-        { id: `f-${p.id}-1`, productId: p.id, name: `1 ${pu}`, qty: 1, price: p.price },
-        { id: `f-${p.id}-2`, productId: p.id, name: `2 ${pu}`, qty: 2, price: Math.round(p.price * 2 * 0.96) },
-        { id: `f-${p.id}-3`, productId: p.id, name: `3 ${pu}`, qty: 3, price: Math.round(p.price * 3 * 0.93) },
-        { id: `f-${p.id}-4`, productId: p.id, name: `Caja 6 ${pu}`, qty: 6, price: Math.round(p.price * 6 * 0.87) },
-      )
-    })
-  return formats
-}
-
-function seedHasFormats(products: Product[]): Record<number, boolean> {
-  const enabled: Record<number, boolean> = {}
-  products.forEach((p) => {
-    if (p.cat === 'Huevos' || p.cat === 'Frutos secos' || p.cat === 'Quesos' || p.cat === 'Queso de cabra') enabled[p.id] = true
-  })
-  return enabled
-}
 
 export interface BaseUnit {
   unit: string
@@ -69,7 +23,6 @@ export function getBaseUnit(cat: string): BaseUnit {
 
 interface FormatsValue {
   formats: Format[]
-  hasFormats: Record<number, boolean>
   getFormats: (productId: number) => Format[]
   getFormat: (formatId: string) => Format | undefined
   productHasFormats: (productId: number) => boolean
@@ -90,17 +43,19 @@ export function useFormats(): FormatsValue {
 }
 
 export function FormatsProvider({ children }: { children: ReactNode }) {
-  const { products } = useStore()
-  const [formats, setFormats] = useState<Format[]>(() => seedFormats(products))
-  const [hasFormats, setHasFormats] = useState<Record<number, boolean>>(() => seedHasFormats(products))
+  const { negocioId } = useStore()
+  // Formatos persistentes en la nube (tabla `formatos`). Misma firma que useState.
+  const [formats, setFormats, rdyFmt] = useCloudCollection<Format>('formatos', negocioId)
 
   const getFormats = useCallback((productId: number) => formats.filter((f) => f.productId === productId), [formats])
   const getFormat = useCallback((formatId: string) => formats.find((f) => f.id === formatId), [formats])
-  const productHasFormats = useCallback((productId: number) => !!hasFormats[productId], [hasFormats])
-  const toggleFormats = useCallback((productId: number, val: boolean) => setHasFormats((h) => ({ ...h, [productId]: val })), [])
-  const addFormat = useCallback((productId: number, f: Omit<Format, 'id' | 'productId'>) => setFormats((fs) => [...fs, { ...f, id: `f-${productId}-${Date.now()}`, productId }]), [])
-  const updateFormat = useCallback((id: string, patch: Partial<Format>) => setFormats((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f))), [])
-  const deleteFormat = useCallback((id: string) => setFormats((fs) => fs.filter((f) => f.id !== id)), [])
+  // "Tiene formatos" se deduce de si hay formatos guardados (sin un mapa aparte que persistir).
+  const productHasFormats = useCallback((productId: number) => formats.some((f) => f.productId === productId), [formats])
+  // Mantener la firma: desactivar = borrar los formatos del producto; activar = se "activa" al crear el primero.
+  const toggleFormats = useCallback((productId: number, val: boolean) => { if (!val) setFormats((fs) => fs.filter((f) => f.productId !== productId)) }, [setFormats])
+  const addFormat = useCallback((productId: number, f: Omit<Format, 'id' | 'productId'>) => setFormats((fs) => [...fs, { ...f, id: `f-${productId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, productId }]), [setFormats])
+  const updateFormat = useCallback((id: string, patch: Partial<Format>) => setFormats((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f))), [setFormats])
+  const deleteFormat = useCallback((id: string) => setFormats((fs) => fs.filter((f) => f.id !== id)), [setFormats])
 
   const baseStockForSale = useCallback(
     (productId: number, formatId: string, qty: number) => {
@@ -129,8 +84,15 @@ export function FormatsProvider({ children }: { children: ReactNode }) {
   )
 
   const value: FormatsValue = {
-    formats, hasFormats, getFormats, getFormat, productHasFormats, toggleFormats, addFormat, updateFormat, deleteFormat,
+    formats, getFormats, getFormat, productHasFormats, toggleFormats, addFormat, updateFormat, deleteFormat,
     baseStockForSale, canSellFormat, maxUnitsForFormat,
   }
+  // Espera a que carguen los formatos para no mostrar un producto con formatos como simple por un instante.
+  if (negocioId && !rdyFmt)
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--surface-2, #f6f5f1)' }}>
+        <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid var(--line)', borderTopColor: 'var(--primary)', animation: 'navspin .8s linear infinite' }} />
+      </div>
+    )
   return <FmtCtx.Provider value={value}>{children}</FmtCtx.Provider>
 }

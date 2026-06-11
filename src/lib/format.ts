@@ -2,7 +2,41 @@
 // Portado de lib.jsx (parte no-visual). Los componentes de gráfico y StockChip
 // viven en components/charts.tsx.
 
-import type { Product, StockState } from '@/types'
+import type { Product, StockState, Format } from '@/types'
+
+/** Unidades de medida basadas en peso/volumen (admiten venta a granel y decimales). */
+export function UNIT_IS_WEIGHT(unit: string): boolean {
+  return ['kg', 'gramo', 'litro', 'mililitro'].includes(unit)
+}
+
+/** Para granel: la cantidad se ingresa en g (kg/gramo) o ml (litro/mililitro). */
+export function granelInputUnit(unit: string): 'g' | 'ml' {
+  return unit === 'litro' || unit === 'mililitro' ? 'ml' : 'g'
+}
+
+/** Convierte la cantidad ingresada (g o ml) a la unidad base del producto (kg, gramo, litro, mililitro). */
+export function granelToBase(unit: string, small: number): number {
+  if (unit === 'kg' || unit === 'litro') return small / 1000 // 1000 g = 1 kg, 1000 ml = 1 L
+  return small // gramo / mililitro: la unidad base ya es la chica
+}
+
+/** Inverso de granelToBase: de la unidad base (kg, gramo…) a la chica (g/ml) para mostrar. */
+export function baseToSmall(unit: string, base: number): number {
+  return unit === 'kg' || unit === 'litro' ? Math.round(base * 1000) : base
+}
+
+/**
+ * Precio de una cantidad arbitraria según TRAMOS (formatos) — "a menor cantidad, mayor precio".
+ * Usa la tarifa (precio/cantidad) del tramo más grande que no supere la cantidad pedida
+ * (o el tramo más chico si la cantidad es menor a todos). Redondea a peso.
+ */
+export function precioPorTramo(amountBase: number, formats: Format[]): number {
+  const tramos = formats.filter((f) => f.qty > 0).sort((a, b) => a.qty - b.qty)
+  if (!tramos.length || amountBase <= 0) return 0
+  let tramo = tramos[0]
+  for (const f of tramos) if (f.qty <= amountBase) tramo = f
+  return Math.round(amountBase * (tramo.price / tramo.qty))
+}
 
 export function fmtCLP(n: number): string {
   return '$' + Math.round(n).toLocaleString('es-CL')

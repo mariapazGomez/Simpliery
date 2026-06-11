@@ -4,11 +4,11 @@
 import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from 'react'
 import { useStore, useMetrics, clientMetrics, TODAY } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
-import { fmtCLP, fmtNum, fmtPct, catColor, stockState, precioDespachoDe, precioDespachoFormato } from '@/lib/format'
+import { fmtCLP, fmtNum, fmtPct, catColor, stockState, precioDespachoDe, precioDespachoFormato, UNIT_IS_WEIGHT } from '@/lib/format'
 import { puedeVerDinero } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
-import { FormatPicker } from '@/components/formatos'
+import { GranelSheet } from '@/components/formatos'
 import { ComprobanteModal } from '@/components/comprobante'
 import type { Product, Format, Cliente, SaleItem, Sale } from '@/types'
 
@@ -57,12 +57,12 @@ function useIsMobile(bp = 760) {
   return mobile
 }
 
-function ProductPicker({ onPick, onPickFormat }: { onPick: (p: ProductWithKg) => void; onPickFormat: (p: ProductWithKg, fmt: Format, qty: number) => void }) {
+function ProductPicker({ onPick, onPickFormat, onPickGranel }: { onPick: (p: ProductWithKg) => void; onPickFormat: (p: ProductWithKg, fmt: Format, qty: number) => void; onPickGranel: (p: ProductWithKg, amountBase: number, price: number, label: string) => void }) {
   const { products, categorias } = useStore()
-  const { productHasFormats } = useFormats()
+  const { productHasFormats, getFormats, maxUnitsForFormat } = useFormats()
   const [cat, setCat] = useState('Todas')
   const [q, setQ] = useState('')
-  const [activeFmt, setActiveFmt] = useState<ProductWithKg | null>(null)
+  const [granelFor, setGranelFor] = useState<ProductWithKg | null>(null)
   const cats = useMemo(() => ['Todas', ...categorias, ...new Set(products.map((p) => p.cat).filter((c) => !categorias.includes(c)))], [categorias, products])
   const list = useMemo(() => {
     const idx = (c: string) => { const i = categorias.indexOf(c); return i < 0 ? 999 : i }
@@ -71,6 +71,7 @@ function ProductPicker({ onPick, onPickFormat }: { onPick: (p: ProductWithKg) =>
       .sort((a, b) => idx(a.cat) - idx(b.cat) || (a.orden ?? 1e9) - (b.orden ?? 1e9) || a.name.localeCompare(b.name))
       .slice(0, 40)
   }, [products, cat, q, categorias])
+  const stockLabel = (p: ProductWithKg) => (st: ReturnType<typeof stockState>) => (st === 'sin' ? 'Sin stock' : `${p.stock} ${UNIT_IS_WEIGHT(p.unit) ? p.unit : 'u.'}`)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
       <SearchBox value={q} onChange={setQ} placeholder="Buscar producto…" width="100%" />
@@ -82,63 +83,75 @@ function ProductPicker({ onPick, onPickFormat }: { onPick: (p: ProductWithKg) =>
           </button>
         ))}
       </div>
-      {/* FormatPicker en línea — se muestra al tocar un producto con formatos */}
-      {activeFmt && (
-        <FormatPicker
-          product={activeFmt}
-          onPick={(product, fmt, qty) => {
-            onPickFormat(product, fmt, qty)
-            setActiveFmt(null)
-          }}
-          onCancel={() => setActiveFmt(null)}
+      {/* "Otra cantidad" en línea — para productos por peso con tramos */}
+      {granelFor && (
+        <GranelSheet
+          product={granelFor}
+          formats={getFormats(granelFor.id)}
+          onAdd={(amountBase, price, label) => { onPickGranel(granelFor, amountBase, price, label); setGranelFor(null) }}
+          onCancel={() => setGranelFor(null)}
         />
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(158px,1fr))', gap: 10, overflowY: 'auto', alignContent: 'start', paddingRight: 2, maxHeight: 440 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 10, overflowY: 'auto', alignContent: 'start', paddingRight: 2, maxHeight: 440 }}>
         {list.map((p) => {
           const st = stockState(p)
           const hasFmt = productHasFormats(p.id)
+          const photoEl = p.photo ? (
+            <img src={p.photo} alt="" style={{ width: '100%', height: 76, objectFit: 'cover', display: 'block', flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: '100%', height: 44, background: `${catColor(p.cat)}18`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              <CatDot cat={p.cat} size={14} />
+            </div>
+          )
+          // Producto con tramos/formatos → chips de 1 toque (+ "otra cantidad" si es por peso)
+          if (hasFmt) {
+            const fmts = getFormats(p.id)
+            const granel = UNIT_IS_WEIGHT(p.unit)
+            return (
+              <div key={p.id} className="card" style={{ padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: `1px solid ${granelFor?.id === p.id ? 'var(--primary)' : 'var(--line)'}`, opacity: st === 'sin' ? 0.55 : 1 }}>
+                {photoEl}
+                <div style={{ padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.25 }}>{p.name}</div>
+                    <span className="tnum" style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 700, whiteSpace: 'nowrap' }}>{stockLabel(p)(st)}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {fmts.map((f) => {
+                      const ok = maxUnitsForFormat(p, f.id) > 0
+                      return (
+                        <button key={f.id} disabled={!ok} onClick={() => onPickFormat(p, f, 1)} className="chip" style={{ border: '1px solid var(--line)', background: ok ? 'var(--surface-3)' : 'var(--surface)', color: ok ? 'var(--ink)' : 'var(--ink-3)', padding: '6px 10px', cursor: ok ? 'pointer' : 'not-allowed', opacity: ok ? 1 : 0.5, fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5 }}>
+                          {f.name} · {fmtCLP(f.price)}
+                        </button>
+                      )
+                    })}
+                    {granel && (
+                      <button onClick={() => setGranelFor((g) => (g?.id === p.id ? null : p))} className="chip" style={{ border: '1px dashed var(--primary)', background: 'var(--primary-tint)', color: 'var(--primary-700)', padding: '6px 10px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 12.5 }}>
+                        + otra cantidad
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+          // Producto simple → 1 toque
           return (
             <button
               key={p.id}
-              onClick={() => {
-                if (st === 'sin') return
-                if (hasFmt) {
-                  setActiveFmt(activeFmt?.id === p.id ? null : p)
-                } else {
-                  onPick(p)
-                }
-              }}
+              onClick={() => { if (st !== 'sin') onPick(p) }}
               disabled={st === 'sin'}
               className="card"
-              style={{ padding: '0', textAlign: 'left', display: 'flex', flexDirection: 'column', cursor: st === 'sin' ? 'not-allowed' : 'pointer', opacity: st === 'sin' ? 0.55 : 1, transition: '.14s', overflow: 'hidden', border: `1px solid ${activeFmt?.id === p.id ? 'var(--primary)' : 'var(--line)'}`, background: activeFmt?.id === p.id ? 'var(--primary-tint)' : 'var(--surface)' }}
-              onMouseEnter={(e) => {
-                if (st !== 'sin' && activeFmt?.id !== p.id) {
-                  e.currentTarget.style.borderColor = 'var(--primary)'
-                  e.currentTarget.style.boxShadow = 'var(--sh-2)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (activeFmt?.id !== p.id) {
-                  e.currentTarget.style.borderColor = 'var(--line)'
-                  e.currentTarget.style.boxShadow = 'none'
-                }
-              }}
+              style={{ padding: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', cursor: st === 'sin' ? 'not-allowed' : 'pointer', opacity: st === 'sin' ? 0.55 : 1, transition: '.14s', overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--surface)' }}
+              onMouseEnter={(e) => { if (st !== 'sin') { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.boxShadow = 'var(--sh-2)' } }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.boxShadow = 'none' }}
             >
-              {/* Foto del producto */}
-              {p.photo ? (
-                <img src={p.photo} alt="" style={{ width: '100%', height: 88, objectFit: 'cover', display: 'block', flexShrink: 0 }} />
-              ) : (
-                <div style={{ width: '100%', height: 52, background: `${catColor(p.cat)}18`, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                  <CatDot cat={p.cat} size={14} />
-                </div>
-              )}
+              {photoEl}
               <div style={{ padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 5, flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-                  <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>{hasFmt && <span style={{ fontSize: 9.5, fontWeight: 800, background: 'var(--primary)', color: '#fff', padding: '1px 5px', borderRadius: 4 }}>FORMATOS</span>}</div>
-                  <span className="tnum" style={{ fontSize: 11, color: st === 'ok' ? 'var(--ink-3)' : st === 'bajo' ? 'oklch(0.50 0.10 70)' : 'var(--danger)', fontWeight: 700 }}>{st === 'sin' ? 'Sin stock' : `${p.stock} u.`}</span>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-start' }}>
+                  <span className="tnum" style={{ fontSize: 11, color: st === 'ok' ? 'var(--ink-3)' : st === 'bajo' ? 'oklch(0.50 0.10 70)' : 'var(--danger)', fontWeight: 700 }}>{stockLabel(p)(st)}</span>
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25, flex: 1 }}>{p.name}</div>
-                <div className="tnum" style={{ fontWeight: 800, fontSize: 15.5, color: 'var(--ink)' }}>{hasFmt ? 'Varios precios' : fmtCLP(p.price)}</div>
+                <div className="tnum" style={{ fontWeight: 800, fontSize: 15.5, color: 'var(--ink)' }}>{fmtCLP(p.price)}</div>
               </div>
             </button>
           )
@@ -435,7 +448,7 @@ type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount:
 
 export default function VentasPage() {
   const { registrarVenta, settings, toast, products, rol, addDespacho, categorias } = useStore()
-  const { productHasFormats } = useFormats()
+  const { productHasFormats, getFormats, maxUnitsForFormat } = useFormats()
   const isMobile = useIsMobile()
   const verDinero = puedeVerDinero(rol)
   const [cart, setCart] = useState<CartLine[]>([])
@@ -449,7 +462,8 @@ export default function VentasPage() {
   const [mStep, setMStep] = useState<'catalogo' | 'carrito' | 'pago'>('catalogo')
   const [mCat, setMCat] = useState('Todas')
   const [mQuery, setMQuery] = useState('')
-  const [mFmt, setMFmt] = useState<ProductWithKg | null>(null)
+  const [mFmtFor, setMFmtFor] = useState<ProductWithKg | null>(null)
+  const [mGranelFor, setMGranelFor] = useState<ProductWithKg | null>(null)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showCliente, setShowCliente] = useState(false)
   const draftKey = 'cl_draft_cart'
@@ -509,6 +523,16 @@ export default function VentasPage() {
       const price = precioLinea(fmt.price, p, true, tipo)
       return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price, originalPrice: price, basePrice: fmt.price, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
     })
+  // Venta a granel: cantidad arbitraria (kg) con precio por tramo. Descuenta stock fraccionado.
+  const addGranel = (p: ProductWithKg, amountBase: number, localPrice: number, label: string) => {
+    const enCarro = cart.filter((i) => i.productId === p.id).reduce((a, i) => a + (i.baseUnitsPerItem ?? 1) * i.qty, 0)
+    if (enCarro + amountBase > p.stock) {
+      toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock} ${p.unit}`)
+      return
+    }
+    const price = precioLinea(localPrice, p, true, tipo)
+    setCart((c) => [...c, { productId: p.id, name: `${p.name} · ${label}`, baseName: p.name, displayFormat: label, cat: p.cat, price, originalPrice: price, basePrice: localPrice, cost: Math.round(p.cost * amountBase), qty: 1, formatId: `granel:${Date.now()}`, baseUnitsPerItem: amountBase, unit: p.unit }])
+  }
 
   // Cambiar local↔despacho recalcula los precios del carrito al instante.
   const applyTipo = (t: 'local' | 'despacho') => {
@@ -613,14 +637,45 @@ export default function VentasPage() {
               ))}
             </div>
 
-            {mFmt && (
-              <FormatPicker
-                product={mFmt}
-                onPick={(product, fmt, qty) => {
-                  addFormat(product, fmt, qty)
-                  setMFmt(null)
-                }}
-                onCancel={() => setMFmt(null)}
+            {/* Panel de tramos (chips de 1 toque) al tocar un producto con formatos */}
+            {mFmtFor && (() => {
+              const p = mFmtFor
+              const fmts = getFormats(p.id)
+              return (
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--primary)', borderRadius: 16, padding: 16, boxShadow: 'var(--sh-2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{p.name}</div>
+                      <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 2 }}>Quedan {p.stock} {UNIT_IS_WEIGHT(p.unit) ? p.unit : 'u.'} · toca un tramo</div>
+                    </div>
+                    <button className="btn btn-ghost btn-icon" onClick={() => setMFmtFor(null)} aria-label="Cerrar"><Icon name="x" size={16} /></button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {fmts.map((f) => {
+                      const ok = maxUnitsForFormat(p, f.id) > 0
+                      return (
+                        <button key={f.id} disabled={!ok} onClick={() => addFormat(p, f, 1)} className="chip" style={{ border: '1px solid var(--line)', background: ok ? 'var(--surface-3)' : 'var(--surface)', color: ok ? 'var(--ink)' : 'var(--ink-3)', padding: '9px 13px', cursor: ok ? 'pointer' : 'not-allowed', opacity: ok ? 1 : 0.5, fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5 }}>
+                          {f.name} · {fmtCLP(f.price)}
+                        </button>
+                      )
+                    })}
+                    {UNIT_IS_WEIGHT(p.unit) && (
+                      <button onClick={() => { setMGranelFor(p); setMFmtFor(null) }} className="chip" style={{ border: '1px dashed var(--primary)', background: 'var(--primary-tint)', color: 'var(--primary-700)', padding: '9px 13px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 700, fontSize: 13.5 }}>
+                        + otra cantidad
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* "Otra cantidad" (granel por peso) */}
+            {mGranelFor && (
+              <GranelSheet
+                product={mGranelFor}
+                formats={getFormats(mGranelFor.id)}
+                onAdd={(amountBase, price, label) => { addGranel(mGranelFor, amountBase, price, label); setMGranelFor(null) }}
+                onCancel={() => setMGranelFor(null)}
               />
             )}
 
@@ -638,11 +693,11 @@ export default function VentasPage() {
                       disabled={st === 'sin'}
                       onClick={() => {
                         if (st === 'sin') return
-                        if (hasFmt) setMFmt((m) => (m?.id === p.id ? null : p))
+                        if (hasFmt) setMFmtFor((m) => (m?.id === p.id ? null : p))
                         else add(p)
                       }}
                       className="card"
-                      style={{ position: 'relative', padding: 0, overflow: 'hidden', textAlign: 'left', border: '1px solid ' + (mFmt?.id === p.id ? 'var(--primary)' : 'var(--line)'), display: 'flex', flexDirection: 'column', opacity: st === 'sin' ? 0.5 : 1, cursor: st === 'sin' ? 'not-allowed' : 'pointer' }}
+                      style={{ position: 'relative', padding: 0, overflow: 'hidden', textAlign: 'left', border: '1px solid ' + (mFmtFor?.id === p.id ? 'var(--primary)' : 'var(--line)'), display: 'flex', flexDirection: 'column', opacity: st === 'sin' ? 0.5 : 1, cursor: st === 'sin' ? 'not-allowed' : 'pointer' }}
                     >
                       {q > 0 && (
                         <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 6px', borderRadius: 7, background: 'var(--primary)', color: '#fff', fontWeight: 800, fontSize: 13, display: 'grid', placeItems: 'center', zIndex: 2 }}>{q}</span>
@@ -853,7 +908,7 @@ export default function VentasPage() {
             </div>
           </div>
           <div className="card-pad">
-            <ProductPicker onPick={add} onPickFormat={addFormat} />
+            <ProductPicker onPick={add} onPickFormat={addFormat} onPickGranel={addGranel} />
           </div>
         </div>
 
