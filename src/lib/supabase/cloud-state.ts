@@ -12,6 +12,16 @@ const supabase = createClient()
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/
 
+// Permite que la app muestre al usuario cualquier fallo de sincronización con la nube
+// (lo conecta StoreProvider con su `toast`). Así un guardado fallido NO pasa desapercibido.
+let cloudErrorHandler: ((msg: string) => void) | null = null
+export function setCloudErrorHandler(fn: ((msg: string) => void) | null) {
+  cloudErrorHandler = fn
+}
+function reportCloudError(table: string, action: string) {
+  if (cloudErrorHandler) cloudErrorHandler(`No se pudo ${action} (${table}). Revisa tu conexión e intenta de nuevo.`)
+}
+
 /** Convierte recursivamente strings ISO en Date (como el reviver de localStorage). */
 export function reviveDates<T>(v: T): T {
   if (typeof v === 'string') return (ISO_RE.test(v) ? new Date(v) : v) as unknown as T
@@ -61,14 +71,15 @@ async function syncDiff<T extends WithId>(table: string, prev: T[], next: T[], n
       const { error } = await supabase
         .from(table)
         .upsert(toUpsert.map((r) => ({ id: r.id, negocio_id: negocioId, data: r })))
-      if (error) console.error('Error guardando en', table, error)
+      if (error) { console.error('Error guardando en', table, error); reportCloudError(table, 'guardar') }
     }
     if (toDelete.length) {
       const { error } = await supabase.from(table).delete().in('id', toDelete as (string | number)[])
-      if (error) console.error('Error borrando en', table, error)
+      if (error) { console.error('Error borrando en', table, error); reportCloudError(table, 'borrar') }
     }
   } catch (e) {
     console.error('Error sincronizando', table, e)
+    reportCloudError(table, 'sincronizar')
   }
 }
 
@@ -85,7 +96,7 @@ export function useCloudCollection<T extends WithId>(
     let alive = true
     ;(async () => {
       const { data, error } = await supabase.from(table).select('data')
-      if (error) console.error('Error cargando', table, error)
+      if (error) { console.error('Error cargando', table, error); reportCloudError(table, 'cargar') }
       if (!alive) return
       const rows = ((data as { data: T }[] | null) ?? []).map((r) => reviveDates(r.data))
       setState(rows)
@@ -149,7 +160,7 @@ export function useCloudSingleton<T>(
     let alive = true
     ;(async () => {
       const { data, error } = await supabase.from(table).select(column).eq('negocio_id', negocioId).maybeSingle()
-      if (error) console.error('Error cargando', table, error)
+      if (error) { console.error('Error cargando', table, error); reportCloudError(table, 'cargar') }
       if (!alive) return
       const val = data ? (data as Record<string, unknown>)[column] : null
       if (val != null) setState(reviveDates(val) as T)
@@ -166,7 +177,7 @@ export function useCloudSingleton<T>(
           void supabase
             .from(table)
             .upsert({ negocio_id: negocioId, [column]: next }, { onConflict: 'negocio_id' })
-            .then(({ error }: { error: unknown }) => { if (error) console.error('Error guardando', table, error) })
+            .then(({ error }: { error: unknown }) => { if (error) { console.error('Error guardando', table, error); reportCloudError(table, 'guardar') } })
         }
         return next
       })

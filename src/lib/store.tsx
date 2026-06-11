@@ -6,7 +6,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { catColor, stockState, fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
-import { usePerfil, useCloudCollection, useCloudSingleton } from '@/lib/supabase/cloud-state'
+import { usePerfil, useCloudCollection, useCloudSingleton, setCloudErrorHandler } from '@/lib/supabase/cloud-state'
 import { createClient } from '@/lib/supabase/client'
 import { PRODUCT_UNITS } from '@/types'
 import type {
@@ -157,6 +157,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t, { id, msg, icon }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2600)
   }, [])
+
+  // Conecta los errores de la nube con el toast: si un guardado/carga falla, el usuario
+  // lo ve al instante (en vez de descubrirlo al recargar). No afecta el camino exitoso.
+  useEffect(() => {
+    setCloudErrorHandler((msg) => toast(msg, 'alert'))
+    return () => setCloudErrorHandler(null)
+  }, [toast])
 
   const saldarDeuda = useCallback((saleId: string, montoPagado: number, metodo?: string) => {
     setSales((ss) =>
