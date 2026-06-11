@@ -23,16 +23,6 @@ interface Proveedor {
 
 const PROV_CATS = ['Aceitunas', 'Embutidos', 'Frutos secos', 'Huevos', 'Mantequillas', 'Mermeladas', 'Queso de cabra', 'Quesos', 'General']
 
-export function seedProveedores(): Proveedor[] {
-  return [
-    { id: 'pv1', nombre: 'Huevos del Valle', contacto: 'Roberto Fuentes', telefono: '+56912345678', correo: 'huevosdelvalle@mail.com', categorias: ['Huevos'], condicion: '30 días', notas: 'Entrega lunes y jueves', activo: true, pedidos: 12, ultimoPedido: new Date(2026, 5, 3) },
-    { id: 'pv2', nombre: 'Quesos del Sur', contacto: 'Ana María Lagos', telefono: '+56923456789', correo: 'quesossur@mail.com', categorias: ['Quesos', 'Queso de cabra'], condicion: '15 días', notas: 'Requiere pedido mínimo $50.000', activo: true, pedidos: 8, ultimoPedido: new Date(2026, 5, 1) },
-    { id: 'pv3', nombre: 'Frutos Selectos SpA', contacto: 'Carlos Rodríguez', telefono: '+56934567890', correo: 'frutos@mail.com', categorias: ['Frutos secos'], condicion: 'Contado', notas: 'Precio por volumen +5kg', activo: true, pedidos: 5, ultimoPedido: new Date(2026, 4, 28) },
-    { id: 'pv4', nombre: 'Aceitunas Maipo', contacto: 'Patricia Vega', telefono: '+56945678901', correo: 'aceitunas@mail.com', categorias: ['Aceitunas'], condicion: '15 días', notas: 'Granel disponible', activo: true, pedidos: 6, ultimoPedido: new Date(2026, 4, 20) },
-    { id: 'pv5', nombre: 'Embutidos Sur', contacto: 'Jorge Soto', telefono: '+56956789012', correo: 'embutidos@mail.com', categorias: ['Embutidos'], condicion: 'Contado', notas: 'Solo efectivo o transferencia', activo: false, pedidos: 3, ultimoPedido: new Date(2026, 3, 15) },
-  ]
-}
-
 function ProveedorModal({ initial, onSave, onClose }: { initial?: Proveedor; onSave: (p: Proveedor) => void; onClose: () => void }) {
   const [f, setF] = useState<Omit<Proveedor, 'id' | 'pedidos' | 'ultimoPedido'>>(
     initial || { nombre: '', contacto: '', telefono: '', correo: '', categorias: [], condicion: 'Contado', notas: '', activo: true },

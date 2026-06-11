@@ -6,7 +6,7 @@ import Link, { useLinkStatus } from 'next/link'
 import { useMemo } from 'react'
 import { useStore, useMetrics, clientMetrics } from '@/lib/store'
 import { NAV_GROUPS, PATH_TO_ID, ROUTE_MAP } from '@/lib/nav'
-import { puedeVer } from '@/lib/permisos'
+import { usePermisos } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { createClient } from '@/lib/supabase/client'
 
@@ -17,7 +17,8 @@ function NavSpinner() {
 }
 
 export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
-  const { settings, clientes, rol } = useStore()
+  const { settings, clientes } = useStore()
+  const { puedeVer } = usePermisos()
   const m = useMetrics()
   const router = useRouter()
   const pathname = usePathname()
@@ -46,7 +47,7 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
         </div>
       </div>
 
-      {puedeVer(rol, 'ventas') && (
+      {puedeVer('ventas') && (
         <Link href={ROUTE_MAP.ventas} className="btn btn-primary" style={{ margin: '2px 6px 6px', justifyContent: 'center' }} onClick={() => setOpen(false)}>
           <Icon name="plus" size={17} />
           Registrar venta
@@ -54,7 +55,7 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
       )}
 
       {NAV_GROUPS.map((g) => {
-        const items = g.items.filter((n) => puedeVer(rol, n.id))
+        const items = g.items.filter((n) => puedeVer(n.id))
         if (items.length === 0) return null
         return (
         <div key={g.label}>

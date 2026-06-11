@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from
 import { useStore, useMetrics, clientMetrics, TODAY } from '@/lib/store'
 import { useFormats } from '@/lib/formats-store'
 import { fmtCLP, fmtNum, fmtPct, catColor, stockState, precioDespachoDe, precioFormatoCanal, formatoEnCanal, UNIT_IS_WEIGHT } from '@/lib/format'
-import { puedeVerDinero } from '@/lib/permisos'
+import { usePermisos } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
 import { GranelSheet } from '@/components/formatos'
@@ -452,10 +452,11 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
 type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount: number } | null }
 
 export default function VentasPage() {
-  const { registrarVenta, settings, toast, products, rol, addDespacho, categorias } = useStore()
+  const { registrarVenta, settings, toast, products, addDespacho, categorias } = useStore()
   const { productHasFormats, getFormats, maxUnitsForFormat } = useFormats()
+  const { puedeVerDinero } = usePermisos()
   const isMobile = useIsMobile()
-  const verDinero = puedeVerDinero(rol)
+  const verDinero = puedeVerDinero()
   const [cart, setCart] = useState<CartLine[]>([])
   const [method, setMethod] = useState('Efectivo')
   const [tipo, setTipo] = useState<'local' | 'despacho'>('local')

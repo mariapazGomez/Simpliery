@@ -106,6 +106,12 @@ export interface Movement {
   note: string
 }
 
+/** Permisos editables por rol: qué secciones ve y si ve dinero (costos/ganancias). */
+export interface RolPermiso {
+  secciones: string[]
+  verDinero: boolean
+}
+
 export interface Settings {
   business: string
   ownerName?: string
@@ -114,6 +120,8 @@ export interface Settings {
   methods: string[]
   minStockDefault: number
   minMargin: number
+  /** Permisos por rol configurables por el admin (vendedor/bodega/contador). admin = siempre total. */
+  permisos?: Record<string, RolPermiso>
 }
 
 /** Resultado de clientMetrics(cliente). */

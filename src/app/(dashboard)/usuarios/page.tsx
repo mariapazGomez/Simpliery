@@ -6,8 +6,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/lib/store'
 import { createClient } from '@/lib/supabase/client'
+import { NAV_GROUPS } from '@/lib/nav'
+import { SECCIONES_POR_ROL, VER_DINERO_DEFAULT, ROLES_CONFIGURABLES } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, Field } from '@/components/ui'
+import type { RolPermiso } from '@/types'
 
 const supabase = createClient()
 
@@ -85,6 +88,105 @@ function EditRolModal({ perfil, onClose, onSave }: { perfil: Perfil; onClose: ()
       footer={<><button className="btn btn-ghost" onClick={onClose}>Cancelar</button><button className="btn btn-primary" onClick={() => { onSave(perfil.id, rol); onClose() }}><Icon name="check" size={16} />Guardar</button></>}>
       <RolPicker value={rol} onChange={setRol} />
     </Modal>
+  )
+}
+
+/* ── Roles y permisos: activar/desactivar pestañas por rol (estilo Kyte) ── */
+function RolesPermisosPanel() {
+  const { settings, setSettings, toast } = useStore()
+  const buildInitial = (): Record<string, RolPermiso> => {
+    const out: Record<string, RolPermiso> = {}
+    for (const r of ROLES_CONFIGURABLES) {
+      const saved = settings.permisos?.[r]
+      const def = SECCIONES_POR_ROL[r]
+      out[r] = saved
+        ? { secciones: [...saved.secciones], verDinero: saved.verDinero }
+        : { secciones: def === 'all' || !def ? [] : [...def], verDinero: VER_DINERO_DEFAULT[r] ?? false }
+    }
+    return out
+  }
+  const [draft, setDraft] = useState<Record<string, RolPermiso>>(buildInitial)
+  const [dirty, setDirty] = useState(false)
+
+  const toggle = (rol: string, id: string) => {
+    setDirty(true)
+    setDraft((d) => {
+      const has = d[rol].secciones.includes(id)
+      return { ...d, [rol]: { ...d[rol], secciones: has ? d[rol].secciones.filter((x) => x !== id) : [...d[rol].secciones, id] } }
+    })
+  }
+  const toggleDinero = (rol: string) => { setDirty(true); setDraft((d) => ({ ...d, [rol]: { ...d[rol], verDinero: !d[rol].verDinero } })) }
+  const restaurar = (rol: string) => {
+    setDirty(true)
+    const def = SECCIONES_POR_ROL[rol]
+    setDraft((d) => ({ ...d, [rol]: { secciones: def === 'all' || !def ? [] : [...def], verDinero: VER_DINERO_DEFAULT[rol] ?? false } }))
+  }
+  const guardar = () => { setSettings((s) => ({ ...s, permisos: draft })); setDirty(false); toast('Permisos actualizados') }
+
+  // Secciones asignables: todo menos Usuarios y Configuración (quedan solo para admin).
+  const grupos = NAV_GROUPS
+    .map((g) => ({ label: g.label, items: g.items.filter((i) => i.id !== 'usuarios' && i.id !== 'config') }))
+    .filter((g) => g.items.length > 0)
+
+  const SaveBtn = () => (
+    <button className="btn btn-primary" onClick={guardar}><Icon name="check" size={15} />Guardar cambios</button>
+  )
+
+  return (
+    <div className="card" style={{ marginTop: 18 }}>
+      <div className="card-head">
+        <Icon name="config" size={18} style={{ color: 'var(--primary-700)' }} />
+        <div style={{ flex: 1 }}><div className="card-title">Roles y permisos</div><div className="card-sub">Elige qué pestañas ve cada rol. Se aplica a esa persona al recargar.</div></div>
+        {dirty && <SaveBtn />}
+      </div>
+
+      {/* Admin: bloqueado, acceso total */}
+      <div style={{ padding: '13px 18px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <RolBadge rol="admin" />
+        <span style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 600 }}>Acceso total — no editable (gestiona el negocio)</span>
+      </div>
+
+      {ROLES_CONFIGURABLES.map((rol) => (
+        <div key={rol} style={{ padding: '15px 18px', borderTop: '1px solid var(--line)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 13, flexWrap: 'wrap' }}>
+            <RolBadge rol={rol} />
+            <div style={{ flex: 1 }} />
+            <button onClick={() => toggleDinero(rol)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }} title="Ver costos, ganancias y márgenes">
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Ver costos y ganancias</span>
+              <span style={{ width: 38, height: 21, borderRadius: 11, position: 'relative', background: draft[rol].verDinero ? 'var(--primary)' : 'var(--line-2)', transition: '.2s', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: 2, left: draft[rol].verDinero ? 19 : 2, width: 17, height: 17, borderRadius: 9, background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+              </span>
+            </button>
+            <button className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 9px' }} onClick={() => restaurar(rol)}>Restaurar</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 16 }}>
+            {grupos.map((g) => (
+              <div key={g.label}>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 7 }}>{g.label}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {g.items.map((it) => {
+                    const on = draft[rol].secciones.includes(it.id)
+                    return (
+                      <label key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '5px 7px', borderRadius: 8, background: on ? 'var(--primary-tint)' : 'transparent' }}>
+                        <input type="checkbox" checked={on} onChange={() => toggle(rol, it.id)} style={{ accentColor: 'var(--primary)', width: 15, height: 15, flexShrink: 0 }} />
+                        <Icon name={it.icon} size={14} style={{ color: on ? 'var(--primary-700)' : 'var(--ink-3)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, fontWeight: on ? 700 : 600, color: on ? 'var(--primary-700)' : 'var(--ink-2)' }}>{it.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {dirty && (
+        <div style={{ padding: '13px 18px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end' }}>
+          <SaveBtn />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -229,6 +331,9 @@ export default function UsuariosPage() {
           </div>
         </div>
       )}
+
+      {/* Roles y permisos */}
+      <RolesPermisosPanel />
 
       {/* Cómo funciona */}
       <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--surface-3)', borderRadius: 12, border: '1px solid var(--line)' }}>

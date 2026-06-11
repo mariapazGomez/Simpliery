@@ -7,7 +7,7 @@ import { StoreProvider, useMetrics, useStore } from '@/lib/store'
 import { FinanzasProvider } from '@/lib/finanzas-store'
 import { FormatsProvider } from '@/lib/formats-store'
 import { PATH_TO_ID, TITLES, ROUTE_MAP, useGo } from '@/lib/nav'
-import { puedeVer, inicio } from '@/lib/permisos'
+import { usePermisos } from '@/lib/permisos'
 import { Icon } from '@/components/icon'
 import { Sidebar } from '@/components/shell/sidebar'
 import { NotifDrawer } from '@/components/notif-drawer'
@@ -48,15 +48,16 @@ function AppShell({ children }: { children: ReactNode }) {
   const go = useGo()
   const m = useMetrics()
   const { rol } = useStore()
+  const { puedeVer, inicio } = usePermisos()
 
   const activeId = PATH_TO_ID[pathname] || (pathname?.startsWith('/finanzas') ? 'finanzas' : 'dashboard')
   const [t1] = TITLES[activeId] || ['—', '']
-  const allowed = puedeVer(rol, activeId)
+  const allowed = puedeVer(activeId)
 
   // Si el rol no puede ver esta sección, redirige a su inicio permitido.
   useEffect(() => {
-    if (rol && !allowed) router.replace(ROUTE_MAP[inicio(rol)] || '/ventas')
-  }, [rol, allowed, router])
+    if (rol && !allowed) router.replace(ROUTE_MAP[inicio()] || '/ventas')
+  }, [rol, allowed, router, inicio])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
