@@ -10,6 +10,7 @@ const supabase = createClient()
 const COLLECTION_TABLES = [
   'productos', 'ventas', 'clientes', 'movimientos', 'gastos', 'nomina',
   'marketing', 'metas', 'creditos', 'proveedores', 'cierres',
+  'despachos', 'formatos', 'recordatorios', 'notif_config',
 ] as const
 
 type RowObj = Record<string, unknown> & { id?: string | number }

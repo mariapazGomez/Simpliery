@@ -295,8 +295,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addClientes = useCallback((arr: Cliente[]) => {
     setClientes((cs) => {
-      const ids = new Set(cs.map((c) => c.correo.toLowerCase()))
-      const nuevos = arr.filter((c) => !ids.has((c.correo || '').toLowerCase()))
+      // Dedupe por correo o teléfono SOLO cuando el dato existe; un campo vacío
+      // no debe marcar como duplicados a todos los demás clientes sin ese dato.
+      const correos = new Set(cs.map((c) => (c.correo || '').trim().toLowerCase()).filter(Boolean))
+      const fonos = new Set(cs.map((c) => (c.telefono || '').replace(/\D/g, '')).filter(Boolean))
+      const nuevos = arr.filter((c) => {
+        const correo = (c.correo || '').trim().toLowerCase()
+        const fono = (c.telefono || '').replace(/\D/g, '')
+        return !(correo && correos.has(correo)) && !(fono && fonos.has(fono))
+      })
       return [...cs, ...nuevos]
     })
     toast('Importación completada')

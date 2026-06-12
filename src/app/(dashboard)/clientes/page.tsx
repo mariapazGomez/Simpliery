@@ -20,9 +20,34 @@ interface Deudor {
 
 /* ── Cliente detail modal ────────────────────────────── */
 function ClienteDetail({ c, onClose }: { c: Cliente; onClose: () => void }) {
-  const { updateCliente } = useStore()
+  const { updateCliente, toast } = useStore()
   const m = useMemo(() => clientMetrics(c), [c])
   const [nota, setNota] = useState(c.nota || '')
+  const [edit, setEdit] = useState(false)
+  const [draft, setDraft] = useState(() => ({
+    nombre: c.nombre || '',
+    telefono: c.telefono || '',
+    correo: c.correo || '',
+    direccion: c.direccion || '',
+    ciudad: c.ciudad || '',
+    depto: c.depto || '',
+  }))
+  const guardarDatos = () => {
+    if (!draft.nombre.trim()) {
+      toast('El nombre no puede quedar vacío', 'alert')
+      return
+    }
+    updateCliente(c.id, {
+      nombre: draft.nombre.trim(),
+      telefono: draft.telefono.trim(),
+      correo: draft.correo.trim(),
+      direccion: draft.direccion.trim(),
+      ciudad: draft.ciudad.trim(),
+      depto: draft.depto.trim() || undefined,
+    })
+    toast('Datos del cliente actualizados')
+    setEdit(false)
+  }
   const nextLabel = m.nextExpected
     ? m.daysUntilNext! > 0
       ? `${m.nextExpected.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })} · en ${m.daysUntilNext} días`
@@ -35,27 +60,66 @@ function ClienteDetail({ c, onClose }: { c: Cliente; onClose: () => void }) {
   return (
     <Modal
       title={c.nombre}
-      sub={c.ciudad + ' · ' + c.correo}
+      sub={[c.ciudad, c.correo].filter(Boolean).join(' · ')}
       onClose={onClose}
       width={620}
       footer={
-        <>
-          <button className="btn btn-ghost" onClick={onClose}>
-            Cerrar
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              updateCliente(c.id, { nota })
-              onClose()
-            }}
-          >
-            <Icon name="check" size={15} />
-            Guardar nota
-          </button>
-        </>
+        edit ? (
+          <>
+            <button className="btn btn-ghost" onClick={() => setEdit(false)}>
+              Cancelar
+            </button>
+            <button className="btn btn-primary" onClick={guardarDatos}>
+              <Icon name="check" size={15} />
+              Guardar cambios
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn btn-ghost" onClick={onClose}>
+              Cerrar
+            </button>
+            <button className="btn btn-ghost" onClick={() => setEdit(true)}>
+              <Icon name="edit" size={15} />
+              Editar datos
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                updateCliente(c.id, { nota })
+                onClose()
+              }}
+            >
+              <Icon name="check" size={15} />
+              Guardar nota
+            </button>
+          </>
+        )
       }
     >
+      {edit ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Nombre">
+            <input className="input" value={draft.nombre} onChange={(e) => setDraft((d) => ({ ...d, nombre: e.target.value }))} placeholder="Nombre del cliente" />
+          </Field>
+          <Field label="Teléfono">
+            <input className="input" value={draft.telefono} onChange={(e) => setDraft((d) => ({ ...d, telefono: e.target.value }))} placeholder="+56 9 …" />
+          </Field>
+          <Field label="Correo">
+            <input className="input" type="email" value={draft.correo} onChange={(e) => setDraft((d) => ({ ...d, correo: e.target.value }))} placeholder="correo@ejemplo.cl" />
+          </Field>
+          <Field label="Comuna / Ciudad">
+            <input className="input" value={draft.ciudad} onChange={(e) => setDraft((d) => ({ ...d, ciudad: e.target.value }))} placeholder="Ej: Ñuñoa" />
+          </Field>
+          <Field label="Dirección" hint="Necesaria para despachar con OptiRoute.">
+            <input className="input" value={draft.direccion} onChange={(e) => setDraft((d) => ({ ...d, direccion: e.target.value }))} placeholder="Calle y número" />
+          </Field>
+          <Field label="Depto / Casa">
+            <input className="input" value={draft.depto} onChange={(e) => setDraft((d) => ({ ...d, depto: e.target.value }))} placeholder="Ej: Depto 1204" />
+          </Field>
+        </div>
+      ) : (
+        <>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <ClienteChip cat={m.categoria} size="lg" />
         <span className="chip chip-neutral">
@@ -188,6 +252,8 @@ function ClienteDetail({ c, onClose }: { c: Cliente; onClose: () => void }) {
         <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)' }}>Notas internas</span>
         <textarea className="input" rows={2} value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej: Cliente prefiere quesos, llama antes de despachar…" style={{ resize: 'vertical' }} />
       </label>
+        </>
+      )}
     </Modal>
   )
 }
