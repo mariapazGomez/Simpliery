@@ -1,28 +1,39 @@
 // ---------- Helpers OptiRoute (puros, sin token — el token vive en el servidor) ----------
+import { fmtCLP } from '@/lib/format'
 import type { Despacho, EstadoDespacho } from '@/types'
 
 /** "Pedido de entrada" de OptiRoute construido desde un Despacho. */
 export interface PedidoOptiRoute {
   reference: string
-  customer: { name: string; phone_number?: string; email?: string }
-  address: { address_string: string; commune_string?: string; apartment_number?: string }
+  customer: { name: string; phone_number?: string; email?: string; demand_a?: number }
+  address: { address_string: string; commune_string?: string; apartment_number?: string; address_more_info?: string }
+  custom_fields?: Record<string, string | number>
 }
 
-/** Mapea un Despacho al objeto que espera la API de pedidos de OptiRoute. */
+/** Mapea un Despacho al objeto que espera la API de pedidos de OptiRoute.
+ *  Incluye el DETALLE del pedido (productos, cantidades y precios) en
+ *  `address_more_info` — el campo que OptiRoute muestra como info útil para la
+ *  entrega — y la cantidad de bultos en `demand_a` (capacidad del vehículo). */
 export function despachoToPedido(d: Despacho): PedidoOptiRoute {
   const tel = (d.telefono || '').replace(/\s/g, '')
+  const detalle = d.items.map((it) => `${it.qty}x ${it.name} ${fmtCLP(it.price * it.qty)}`).join(' · ')
+  const masInfo = `Boleta #${d.boleta} · ${detalle} · TOTAL ${fmtCLP(d.total)} · Pago: ${d.method}`.slice(0, 950)
+  const bultos = Math.max(1, Math.round(d.items.reduce((a, it) => a + it.qty, 0)))
   return {
     reference: d.saleId,
     customer: {
       name: d.cliente,
       ...(tel ? { phone_number: tel } : {}),
       ...(d.correo ? { email: d.correo } : {}),
+      demand_a: bultos,
     },
     address: {
       address_string: d.direccion,
       ...(d.ciudad ? { commune_string: d.ciudad } : {}),
       ...(d.depto ? { apartment_number: d.depto } : {}),
+      address_more_info: masInfo,
     },
+    custom_fields: { boleta: d.boleta, total: d.total, metodo: d.method },
   }
 }
 

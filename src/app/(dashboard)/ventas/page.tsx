@@ -575,8 +575,9 @@ export default function VentasPage() {
   const finalMargin = finalTotal ? (finalProfit / finalTotal) * 100 : 0
   const marginWarn = cart.length > 0 && finalTotal > 0 && finalMargin < (settings.minMargin || 25)
 
-  // Para despacho exigimos nombre + dirección + comuna (OptiRoute necesita geocodificar).
-  const despachoListo = cliente.nombre.trim().length > 0 && cliente.direccion.trim().length > 0 && cliente.ciudad.trim().length > 0
+  // Para despacho exigimos nombre + teléfono + dirección + comuna: OptiRoute necesita
+  // geocodificar la dirección y el conductor necesita el teléfono para contactar.
+  const despachoListo = cliente.nombre.trim().length > 0 && cliente.numero.trim().length > 0 && cliente.direccion.trim().length > 0 && cliente.ciudad.trim().length > 0
   const canConfirm = cart.length > 0 && (tipo === 'local' ? true : despachoListo) && (method !== 'Crédito' || cliente.nombre.trim().length > 0)
 
   const confirm = async () => {
@@ -1053,7 +1054,7 @@ export default function VentasPage() {
             {tipo === 'despacho' && !despachoListo && cart.length > 0 && (
               <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
                 <Icon name="alert" size={13} />
-                Para despacho ingresa nombre, dirección y comuna del destinatario
+                Para despacho ingresa nombre, teléfono, dirección y comuna del destinatario
               </div>
             )}
             {method === 'Crédito' && !cliente.nombre.trim() && cart.length > 0 && (
