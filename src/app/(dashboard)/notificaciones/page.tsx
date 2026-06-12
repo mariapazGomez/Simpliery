@@ -2,13 +2,13 @@
 
 // ---------- Notificaciones (portado de screen-notificaciones.jsx) ----------
 import { useState, useMemo } from 'react'
-import { useStore, useMetrics } from '@/lib/store'
+import { useStore, useMetrics, clientMetrics } from '@/lib/store'
 import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import { fmtCLP, fmtPct } from '@/lib/format'
 import { useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
 import { PageHeader, Modal, EmptyState, Field } from '@/components/ui'
-import type { Product, Sale, Settings } from '@/types'
+import type { Product, Sale, Settings, Cliente } from '@/types'
 
 interface NotifTypeDef {
   icon: string
@@ -39,7 +39,7 @@ interface Notif {
 type Metrics = ReturnType<typeof useMetrics>
 
 /* Generate smart notifications from live data */
-export function buildNotifications(metrics: Metrics, products: Product[], _sales: Sale[], settings: Settings): Notif[] {
+export function buildNotifications(metrics: Metrics, products: Product[], _sales: Sale[], settings: Settings, clientes: Cliente[] = []): Notif[] {
   const notifs: Notif[] = []
   const add = (id: string, type: string, title: string, body: string, action: string, priority = 2) =>
     notifs.push({ id, type, title, body, action, priority, time: new Date() })
@@ -59,11 +59,14 @@ export function buildNotifications(metrics: Metrics, products: Product[], _sales
     add('deuda', 'deuda', `${fmtCLP(metrics.totalDeuda)} pendiente de cobro`,
       `${metrics.clientesDeudores} cliente${metrics.clientesDeudores !== 1 ? 's' : ''} con ventas a crédito sin pagar`, 'clientes', 1)
 
-  /* Clients about to buy */
-  const proximos = (metrics.deudaPendiente?.length || 0) > 0 ? 0 : Math.round((metrics.topProducts?.[0]?.sold || 0) * 0.12)
-  const proxCount = proximos || 8
-  add('clientes_prox', 'cliente', `${proxCount} clientes próximos a recomprar`,
-    'Esta semana es buen momento para contactarlos y generar ventas', 'segmentos', 2)
+  /* Clients about to buy — conteo REAL desde el historial de compras */
+  const proxCount = clientes.filter((c) => {
+    const cm = clientMetrics(c)
+    return cm.daysUntilNext != null && cm.daysUntilNext >= 0 && cm.daysUntilNext <= 7
+  }).length
+  if (proxCount > 0)
+    add('clientes_prox', 'cliente', `${proxCount} cliente${proxCount > 1 ? 's' : ''} próximo${proxCount > 1 ? 's' : ''} a recomprar`,
+      'Esta semana es buen momento para contactarlos y generar ventas', 'segmentos', 2)
 
   /* Low margin warning */
   const lowMargin = products.filter((p) => p.price > 0 && p.marginPct < (settings?.minMargin || 25))
@@ -126,12 +129,12 @@ function ReminderRow({ r, onToggle, onDelete }: { r: ReminderRowData; onToggle: 
 /* ── Main screen ── */
 export default function NotificacionesPage() {
   const go = useGo()
-  const { products, sales, settings, negocioId } = useStore()
+  const { products, sales, settings, negocioId, clientes } = useStore()
   const m = useMetrics()
   const [tab, setTab] = useState('alertas')
   const [filter, setFilter] = useState('todas')
 
-  const notifs = useMemo(() => buildNotifications(m, products, sales, settings), [m, products, sales, settings])
+  const notifs = useMemo(() => buildNotifications(m, products, sales, settings, clientes), [m, products, sales, settings, clientes])
 
   const [reminders, setReminders] = useCloudCollection<ReminderRowData>('notif_config', negocioId)
   const [showNew, setShowNew] = useState(false)

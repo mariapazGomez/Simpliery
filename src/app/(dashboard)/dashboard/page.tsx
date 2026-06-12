@@ -3,6 +3,7 @@
 // ---------- Dashboard / Inicio (portado de screen-dashboard.jsx) ----------
 import { useMemo } from 'react'
 import { useStore, useMetrics, clientMetrics, TODAY } from '@/lib/store'
+import { exportVentasCSV } from '@/lib/exports'
 import { fmtCLP, fmtPct } from '@/lib/format'
 import { useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
@@ -63,7 +64,7 @@ export default function DashboardPage() {
 
   const lowM = m.cats.find((c) => c.marginPct < settings.minMargin)
   const alerts: Alert[] = [
-    { icon: 'box', tone: 'danger', text: `${m.lowStock.length} productos necesitan reposición`, cta: 'Ver inventario', to: 'inventario' },
+    m.lowStock.length > 0 ? { icon: 'box', tone: 'danger' as const, text: `${m.lowStock.length} productos necesitan reposición`, cta: 'Ver inventario', to: 'inventario' } : null,
     proxClientes > 0 ? { icon: 'clientes', tone: 'primary', text: `${proxClientes} clientes están próximos a recomprar esta semana`, cta: 'Ver segmentos', to: 'segmentos' } : null,
     lowM ? { icon: 'percent', tone: 'warn', text: `Margen de ${lowM.cat} bajo el ${settings.minMargin}% — revisa precios`, cta: 'Ver productos', to: 'productos' } : null,
     m.topCat ? { icon: 'zap', tone: 'primary', text: `${m.topCat.cat} es tu categoría estrella`, cta: 'Ver reportes', to: 'reportes' } : null,
@@ -86,7 +87,13 @@ export default function DashboardPage() {
           <Icon name="phone" size={16} />
           Compartir por WA
         </button>
-        <button className="btn btn-ghost">
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            const inicio = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
+            exportVentasCSV(sales.filter((s) => s.date >= inicio), 'ventas_este_mes')
+          }}
+        >
           <Icon name="download" size={16} />
           Exportar
         </button>

@@ -28,9 +28,14 @@ interface FinanzasValue {
   addGasto: (g: Omit<Gasto, 'id'>) => void
   updateGasto: (id: string, p: Partial<Gasto>) => void
   deleteGasto: (id: string) => void
+  addNomina: (n: Omit<NominaItem, 'id'>) => void
   payNomina: (id: string) => void
+  deleteNomina: (id: string) => void
+  addMarketing: (mk: Omit<MarketingItem, 'id'>) => void
+  deleteMarketing: (id: string) => void
   addMeta: (m: Omit<Meta, 'id'>) => void
   updateMeta: (id: string, p: Partial<Meta>) => void
+  deleteMeta: (id: string) => void
   addCredito: (c: Credito) => void
   updateCredito: (id: string, p: Partial<Credito>) => void
   pagarCredito: (id: string, pago: CreditoPago) => void
@@ -47,16 +52,22 @@ export function FinanzasProvider({ children }: { children: ReactNode }) {
   const { negocioId } = useStore()
   const [gastos, setGastos] = useCloudCollection<Gasto>('gastos', negocioId)
   const [nomina, setNomina] = useCloudCollection<NominaItem>('nomina', negocioId)
-  const [marketing] = useCloudCollection<MarketingItem>('marketing', negocioId)
+  const [marketing, setMarketing] = useCloudCollection<MarketingItem>('marketing', negocioId)
   const [metas, setMetas] = useCloudCollection<Meta>('metas', negocioId)
   const [creditos, setCreditos] = useCloudCollection<Credito>('creditos', negocioId)
 
   const addGasto = useCallback((g: Omit<Gasto, 'id'>) => setGastos((gs) => [...gs, { ...g, id: 'g' + Date.now() }]), [setGastos])
   const updateGasto = useCallback((id: string, p: Partial<Gasto>) => setGastos((gs) => gs.map((g) => (g.id === id ? { ...g, ...p } : g))), [setGastos])
   const deleteGasto = useCallback((id: string) => setGastos((gs) => gs.filter((g) => g.id !== id)), [setGastos])
-  const payNomina = useCallback((id: string) => setNomina((ns) => ns.map((n) => (n.id === id ? { ...n, estado: 'pagado' as const } : n))), [setNomina])
+  const addNomina = useCallback((n: Omit<NominaItem, 'id'>) => setNomina((ns) => [...ns, { ...n, id: 'n' + Date.now() }]), [setNomina])
+  // Alterna pagado↔pendiente (permite deshacer un clic por error, igual que en gastos).
+  const payNomina = useCallback((id: string) => setNomina((ns) => ns.map((n) => (n.id === id ? { ...n, estado: n.estado === 'pagado' ? 'pendiente' as const : 'pagado' as const } : n))), [setNomina])
+  const deleteNomina = useCallback((id: string) => setNomina((ns) => ns.filter((n) => n.id !== id)), [setNomina])
+  const addMarketing = useCallback((mk: Omit<MarketingItem, 'id'>) => setMarketing((ms) => [...ms, { ...mk, id: 'mk' + Date.now() }]), [setMarketing])
+  const deleteMarketing = useCallback((id: string) => setMarketing((ms) => ms.filter((m) => m.id !== id)), [setMarketing])
   const addMeta = useCallback((m: Omit<Meta, 'id'>) => setMetas((ms) => [...ms, { ...m, id: 'mt' + Date.now() }]), [setMetas])
   const updateMeta = useCallback((id: string, p: Partial<Meta>) => setMetas((ms) => ms.map((m) => (m.id === id ? { ...m, ...p } : m))), [setMetas])
+  const deleteMeta = useCallback((id: string) => setMetas((ms) => ms.filter((m) => m.id !== id)), [setMetas])
   const addCredito = useCallback((c: Credito) => setCreditos((cs) => [...cs, c]), [setCreditos])
   const updateCredito = useCallback((id: string, p: Partial<Credito>) => setCreditos((cs) => cs.map((c) => (c.id === id ? { ...c, ...p } : c))), [setCreditos])
   const pagarCredito = useCallback(
@@ -72,7 +83,7 @@ export function FinanzasProvider({ children }: { children: ReactNode }) {
     [setCreditos],
   )
 
-  const value: FinanzasValue = { gastos, nomina, marketing, metas, creditos, addGasto, updateGasto, deleteGasto, payNomina, addMeta, updateMeta, addCredito, updateCredito, pagarCredito }
+  const value: FinanzasValue = { gastos, nomina, marketing, metas, creditos, addGasto, updateGasto, deleteGasto, addNomina, payNomina, deleteNomina, addMarketing, deleteMarketing, addMeta, updateMeta, deleteMeta, addCredito, updateCredito, pagarCredito }
   return <FinCtx.Provider value={value}>{children}</FinCtx.Provider>
 }
 
@@ -101,7 +112,9 @@ export function useFinMetrics() {
     const cajaProyectada = utilidadEstimada + ventasPorDia * daysLeft * (margenProm / 100) - gastosPendientes
 
     const valInventario = products.reduce((a, p) => a + p.stock * p.cost, 0)
-    const prodBajaRotacion = products.filter((p) => p.sold < 3).length
+    const bajaRotacion = products.filter((p) => p.sold < 3)
+    const prodBajaRotacion = bajaRotacion.length
+    const valBajaRotacion = bajaRotacion.reduce((a, p) => a + p.stock * p.cost, 0)
 
     const enriched = clientes.map((c) => clientMetrics(c))
     const clientesActivos = enriched.filter((c) => c.daysSinceLast != null && c.daysSinceLast <= 30).length
@@ -113,13 +126,16 @@ export function useFinMetrics() {
     const nominaMes = nomina.reduce((a, n) => a + n.monto + (n.bono || 0), 0)
 
     const diaHoy = now.getDate()
+    const finDeMes = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
     const weeklyFlow = [1, 2, 3, 4].map((w) => {
+      // La semana 4 llega hasta fin de mes (días 29-31 incluidos).
+      const lastDay = w === 4 ? finDeMes : w * 7
       const wStart = new Date(now.getFullYear(), now.getMonth(), (w - 1) * 7 + 1)
-      const wEnd = new Date(now.getFullYear(), now.getMonth(), w * 7)
+      const wEnd = new Date(now.getFullYear(), now.getMonth(), lastDay, 23, 59, 59)
       const wSales = sales.filter((s) => s.date >= wStart && s.date <= wEnd)
       const wIng = wSales.reduce((a, s) => a + s.total, 0)
       const wCost = wSales.reduce((a, s) => a + s.cost, 0)
-      const wGastos = gastos.filter((g) => { const d = g.fecha.getDate(); return d >= (w - 1) * 7 + 1 && d <= w * 7 && g.fecha.getMonth() === now.getMonth() }).reduce((a, g) => a + g.monto, 0)
+      const wGastos = gastos.filter((g) => { const d = g.fecha.getDate(); return d >= (w - 1) * 7 + 1 && d <= lastDay && g.fecha.getMonth() === now.getMonth() }).reduce((a, g) => a + g.monto, 0)
       const isFuture = wStart.getDate() > diaHoy
       return {
         label: `Semana ${w}`,
@@ -141,7 +157,7 @@ export function useFinMetrics() {
 
     return {
       ingresosMes, costosMes, gananciaMes, margenProm, ventasPorDia, ventasPorSemana, totalGastosMes, gastosFijos,
-      gastosVariables, gastosPendientes, utilidadEstimada, cajaProyectada, valInventario, prodBajaRotacion,
+      gastosVariables, gastosPendientes, utilidadEstimada, cajaProyectada, valInventario, prodBajaRotacion, valBajaRotacion,
       clientesActivos, proximos7, ticketProm, frecProm, nominaMes, weeklyFlow, metaPrincipal, ventasNecesarias,
       totalDeuda, clientesDeudoresN,
     }

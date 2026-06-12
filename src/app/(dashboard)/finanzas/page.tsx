@@ -157,8 +157,7 @@ export default function FinanzasPage() {
                 const active = tab === t.id
                 const hasBadge =
                   (t.id === 'cxp' && m.gastosPendientes > 0) ||
-                  (t.id === 'deudas' && creditos && creditos.filter((c) => c.estado === 'atrasado').length > 0) ||
-                  t.id === 'documentos'
+                  (t.id === 'deudas' && creditos && creditos.filter((c) => c.estado === 'atrasado').length > 0)
                 return (
                   <button
                     key={t.id}

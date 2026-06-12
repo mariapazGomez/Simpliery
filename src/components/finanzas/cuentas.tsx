@@ -5,6 +5,7 @@
 import { useState, useMemo } from 'react'
 import { useStore, TODAY } from '@/lib/store'
 import { useFinanzas, useFinMetrics, GASTO_COLORS } from '@/lib/finanzas-store'
+import { downloadBlob } from '@/lib/exports'
 import { fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { Modal, EmptyState, MoneyInput, Field } from '@/components/ui'
@@ -276,10 +277,16 @@ function FinCxP() {
 ────────────────────────────────────────────── */
 function FinIVA() {
   const m = useFinMetrics()
+  const { gastos } = useFinanzas()
   const IVA_RATE = 0.19
   const ventasAfectas = m.ingresosMes
   const ivaDebito = Math.round((ventasAfectas * IVA_RATE) / (1 + IVA_RATE))
-  const gastoConRespaldo = Math.round(m.totalGastosMes * 0.72)
+  // Respaldo REAL: gastos del mes marcados "tengo boleta/factura" (los antiguos sin
+  // el campo cuentan como con respaldo; márcalos al editar si no lo tienen).
+  const mesInicio = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
+  const gastosMes = gastos.filter((g) => g.fecha >= mesInicio)
+  const gastoConRespaldo = gastosMes.filter((g) => g.respaldo !== false).reduce((a, g) => a + g.monto, 0)
+  const gastoSinRespaldo = gastosMes.filter((g) => g.respaldo === false).reduce((a, g) => a + g.monto, 0)
   const ivaCredito = Math.round((gastoConRespaldo * IVA_RATE) / (1 + IVA_RATE))
   const ivaPagar = Math.max(0, ivaDebito - ivaCredito)
   const [gastosTipo, setGastosTipo] = useState('con')
@@ -350,7 +357,7 @@ function FinIVA() {
                 <>
                   <div style={{ padding: '11px 14px', background: 'var(--danger-tint)', borderRadius: 11, display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontWeight: 700, fontSize: 14 }}>Sin respaldo</span>
-                    <span className="tnum" style={{ fontWeight: 800, fontSize: 15, color: 'var(--danger)' }}>{fmtCLP(m.totalGastosMes - gastoConRespaldo)}</span>
+                    <span className="tnum" style={{ fontWeight: 800, fontSize: 15, color: 'var(--danger)' }}>{fmtCLP(gastoSinRespaldo)}</span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 600, lineHeight: 1.5 }}>Gastos sin boleta o comprobante. No pueden usarse como IVA crédito.</div>
                   <div style={{ padding: '10px 14px', background: 'var(--warn-tint)', borderRadius: 10, fontSize: 13, fontWeight: 600, color: 'oklch(0.50 0.10 70)' }}>
@@ -369,25 +376,38 @@ function FinIVA() {
 /* ──────────────────────────────────────────────
    Documentos
 ────────────────────────────────────────────── */
-type Doc = { id: string; tipo: string; ref: string; fecha: Date; estado: 'emitido' | 'pendiente' | 'revisado' | 'sin_resp'; cliente: string; monto: number }
-const SEED_DOCS: Doc[] = [
-  { id: 'd1', tipo: 'Comprobante de venta', ref: 'Venta #46210', fecha: new Date(2026, 5, 6), estado: 'emitido', cliente: 'Sofía Reyes', monto: 28500 },
-  { id: 'd2', tipo: 'Factura pendiente', ref: 'Venta #46208', fecha: new Date(2026, 5, 5), estado: 'pendiente', cliente: 'Comercial López', monto: 142000 },
-  { id: 'd3', tipo: 'Gasto con respaldo', ref: 'Arriendo jun', fecha: new Date(2026, 5, 1), estado: 'revisado', cliente: 'Inmob. Castro', monto: 480000 },
-  { id: 'd4', tipo: 'Gasto sin respaldo', ref: 'Mantención', fecha: new Date(2026, 5, 2), estado: 'sin_resp', cliente: 'Técnico Gómez', monto: 75000 },
-  { id: 'd5', tipo: 'Comprobante de venta', ref: 'Venta #46205', fecha: new Date(2026, 5, 4), estado: 'emitido', cliente: 'Rodrigo Pérez', monto: 67300 },
-  { id: 'd6', tipo: 'Factura pendiente', ref: 'Venta #46201', fecha: new Date(2026, 5, 3), estado: 'pendiente', cliente: 'Distribuidora X', monto: 215000 },
-  { id: 'd7', tipo: 'Gasto con respaldo', ref: 'Meta Ads', fecha: new Date(2026, 5, 1), estado: 'revisado', cliente: 'Meta', monto: 85000 },
-  { id: 'd8', tipo: 'Gasto sin respaldo', ref: 'Combustible', fecha: new Date(2026, 5, 2), estado: 'sin_resp', cliente: 'COPEC', monto: 48000 },
-]
+type Doc = { id: string; tipo: string; ref: string; fecha: Date; estado: 'emitido' | 'pendiente' | 'pagado' | 'sin_resp'; cliente: string; monto: number }
+
 function FinDocumentos() {
-  const [docs, setDocs] = useState<Doc[]>(SEED_DOCS)
+  const { sales } = useStore()
+  const { gastos } = useFinanzas()
   const [tipo, setTipo] = useState('Todos')
   const [est, setEst] = useState('Todos')
-  const tipos = ['Todos', 'Comprobante de venta', 'Factura pendiente', 'Gasto con respaldo', 'Gasto sin respaldo']
-  const estados = ['Todos', 'pendiente', 'emitido', 'revisado', 'sin_resp']
-  const estadoLabel: Record<string, string> = { pendiente: 'Pendiente', emitido: 'Emitido', revisado: 'Revisado', sin_resp: 'Sin respaldo' }
-  const estadoChip: Record<string, string> = { pendiente: 'chip-warn', emitido: 'chip-ok', revisado: 'chip-neutral', sin_resp: 'chip-danger' }
+  const tipos = ['Todos', 'Comprobante de venta', 'Gasto con respaldo', 'Gasto sin respaldo']
+  const estados = ['Todos', 'emitido', 'pendiente', 'sin_resp']
+  const estadoLabel: Record<string, string> = { pendiente: 'Por pagar', emitido: 'Emitido', pagado: 'Pagado', sin_resp: 'Sin respaldo' }
+  const estadoChip: Record<string, string> = { pendiente: 'chip-warn', emitido: 'chip-ok', pagado: 'chip-neutral', sin_resp: 'chip-danger' }
+
+  // Documentos REALES del mes: comprobantes de venta emitidos + gastos registrados.
+  const mesInicio = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
+  const docs = useMemo<Doc[]>(() => {
+    const deVentas: Doc[] = sales
+      .filter((s) => s.date >= mesInicio)
+      .map((s) => ({ id: 'v' + s.id, tipo: 'Comprobante de venta', ref: `Venta #${s.boleta}`, fecha: s.date, estado: 'emitido' as const, cliente: s.cliente?.nombre || 'Venta de mostrador', monto: s.total }))
+    const deGastos: Doc[] = gastos
+      .filter((g) => g.fecha >= mesInicio)
+      .map((g) => ({
+        id: 'g' + g.id,
+        tipo: g.respaldo === false ? 'Gasto sin respaldo' : 'Gasto con respaldo',
+        ref: g.desc,
+        fecha: g.fecha,
+        estado: g.respaldo === false ? ('sin_resp' as const) : g.estado === 'pendiente' ? ('pendiente' as const) : ('pagado' as const),
+        cliente: g.proveedor || g.cat,
+        monto: g.monto,
+      }))
+    return [...deVentas, ...deGastos].sort((a, b) => b.fecha.getTime() - a.fecha.getTime())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sales, gastos])
 
   const list = docs.filter((d) => (tipo === 'Todos' || d.tipo === tipo) && (est === 'Todos' || d.estado === est))
   const pendientes = docs.filter((d) => d.estado === 'pendiente').length
@@ -396,14 +416,14 @@ function FinDocumentos() {
   return (
     <div className="fade-in">
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', marginBottom: 18 }}>
-        <FinCard icon="receipt" label="Documentos del mes" value={docs.length} tone="primary" />
-        <FinCard icon="alert" label="Facturas pendientes" value={pendientes} tone={pendientes > 0 ? 'warn' : 'ok'} sub={pendientes > 0 ? 'Por emitir' : undefined} />
+        <FinCard icon="receipt" label="Documentos del mes" value={docs.length} tone="primary" sub="Ventas + gastos registrados" />
+        <FinCard icon="alert" label="Gastos por pagar" value={pendientes} tone={pendientes > 0 ? 'warn' : 'ok'} sub={pendientes > 0 ? 'Pendientes de pago' : undefined} />
         <FinCard icon="tag" label="Gastos sin respaldo" value={sinResp} tone={sinResp > 0 ? 'danger' : 'ok'} sub={sinResp > 0 ? 'Solicita comprobante' : undefined} />
-        <FinCard icon="check" label="Listos para contador" value={docs.filter((d) => d.estado === 'revisado').length} tone="ok" />
+        <FinCard icon="check" label="Comprobantes emitidos" value={docs.filter((d) => d.estado === 'emitido').length} tone="ok" />
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div className="seg" style={{ flexShrink: 0 }}>{estados.slice(0, 4).map((e) => <button key={e} className={est === e ? 'on' : ''} onClick={() => setEst(e)}>{e === 'Todos' ? 'Todos' : estadoLabel[e]}</button>)}</div>
+        <div className="seg" style={{ flexShrink: 0 }}>{estados.map((e) => <button key={e} className={est === e ? 'on' : ''} onClick={() => setEst(e)}>{e === 'Todos' ? 'Todos' : estadoLabel[e]}</button>)}</div>
         <select className="select" style={{ maxWidth: 230, height: 40, fontSize: 13.5 }} value={tipo} onChange={(e) => setTipo(e.target.value)}>
           {tipos.map((t) => <option key={t}>{t}</option>)}
         </select>
@@ -412,26 +432,21 @@ function FinDocumentos() {
       <div className="card">
         <div style={{ overflowX: 'auto' }}>
           <table className="tbl">
-            <thead><tr><th>Tipo</th><th>Referencia</th><th>Empresa / Cliente</th><th className="num">Monto</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr><th>Tipo</th><th>Referencia</th><th>Empresa / Cliente</th><th className="num">Monto</th><th>Fecha</th><th>Estado</th></tr></thead>
             <tbody>
-              {list.map((d) => (
+              {list.slice(0, 60).map((d) => (
                 <tr key={d.id}>
                   <td style={{ fontWeight: 700, fontSize: 13.5 }}>{d.tipo}</td>
-                  <td className="muted tnum">{d.ref}</td>
+                  <td className="muted">{d.ref}</td>
                   <td style={{ fontWeight: 600 }}>{d.cliente}</td>
                   <td className="num tnum" style={{ fontWeight: 700 }}>{fmtCLP(d.monto)}</td>
                   <td style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 600 }}>{d.fecha.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })}</td>
                   <td><span className={'chip ' + estadoChip[d.estado]} style={{ fontSize: 12 }}>{estadoLabel[d.estado]}</span></td>
-                  <td className="num">
-                    <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => { setDocs((ds) => ds.map((x) => (x.id === d.id ? { ...x, estado: 'revisado' } : x))) }}>
-                      {d.estado === 'revisado' ? <Icon name="check" size={13} /> : 'Revisar'}
-                    </button>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {list.length === 0 && <EmptyState icon="receipt" title="Sin documentos" text="No hay documentos para el filtro seleccionado." />}
+          {list.length === 0 && <EmptyState icon="receipt" title="Sin documentos este mes" text="Tus comprobantes de venta y gastos registrados del mes aparecerán aquí." />}
         </div>
       </div>
     </div>
@@ -443,8 +458,8 @@ function FinDocumentos() {
 ────────────────────────────────────────────── */
 function FinExportar() {
   const m = useFinMetrics()
-  const { nomina, marketing } = useFinanzas()
-  const { toast } = useStore()
+  const { nomina, marketing, gastos } = useFinanzas()
+  const { toast, sales, products } = useStore()
   const [period, setPeriod] = useState('mes')
   const [selected, setSelected] = useState<Set<string>>(new Set(['ventas', 'gastos', 'resultados', 'cxc', 'iva']))
   const toggle = (k: string) => setSelected((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
@@ -460,9 +475,95 @@ function FinExportar() {
     { id: 'marketing', icon: 'megaphone', label: 'Inversión en marketing', desc: 'Campañas, montos y resultados', monto: marketing.reduce((a, mk) => a + mk.monto, 0) },
   ]
 
-  const mockExport = (fmt: string) => {
-    const items = exportItems.filter((e) => selected.has(e.id)).map((e) => e.label).join(', ')
-    toast(`Generando ${fmt}: ${items}`)
+  // Genera un CSV REAL (se abre directo en Excel) con las secciones seleccionadas.
+  const exportar = () => {
+    const esc = (v: unknown) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
+    const row = (...cells: unknown[]) => cells.map(esc).join(',')
+    const L: string[] = []
+
+    let desde = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
+    let hasta = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 1)
+    if (period === 'anterior') { desde = new Date(TODAY.getFullYear(), TODAY.getMonth() - 1, 1); hasta = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1) }
+    if (period === 'trimestre') desde = new Date(TODAY.getFullYear(), TODAY.getMonth() - 2, 1)
+    const ventasR = sales.filter((s) => s.date >= desde && s.date < hasta)
+    const gastosR = gastos.filter((g) => g.fecha >= desde && g.fecha < hasta)
+    const totVentas = ventasR.reduce((a, s) => a + s.total, 0)
+    const totCosto = ventasR.reduce((a, s) => a + s.cost, 0)
+    const totGastos = gastosR.reduce((a, g) => a + g.monto, 0)
+
+    L.push(row('CONTROL LOCAL — RESUMEN PARA CONTADOR'))
+    L.push(row('Período', `${desde.toLocaleDateString('es-CL')} al ${new Date(hasta.getTime() - 86400000).toLocaleDateString('es-CL')}`))
+    L.push('')
+
+    if (selected.has('ventas')) {
+      L.push(row('VENTAS'))
+      L.push(row('Boleta', 'Fecha', 'Cliente', 'Método', 'Tipo', 'Descuento', 'Total', 'Costo', 'Ganancia'))
+      for (const s of ventasR) L.push(row(s.boleta, s.date.toLocaleDateString('es-CL'), s.cliente?.nombre || '', s.method, s.tipo || 'local', s.descuento?.amount || 0, s.total, s.cost, s.profit))
+      L.push(row('TOTAL', '', '', '', '', '', totVentas, totCosto, totVentas - totCosto))
+      L.push('')
+    }
+    if (selected.has('gastos')) {
+      L.push(row('GASTOS'))
+      L.push(row('Fecha', 'Categoría', 'Descripción', 'Proveedor', 'Método', 'Estado', 'Respaldo', 'Monto'))
+      for (const g of gastosR) L.push(row(g.fecha.toLocaleDateString('es-CL'), g.cat, g.desc, g.proveedor, g.method, g.estado, g.respaldo === false ? 'No' : 'Sí', g.monto))
+      L.push(row('TOTAL', '', '', '', '', '', '', totGastos))
+      L.push('')
+    }
+    if (selected.has('resultados')) {
+      L.push(row('ESTADO DE RESULTADOS (estimado)'))
+      L.push(row('Ventas netas', totVentas))
+      L.push(row('Costo productos vendidos', -totCosto))
+      L.push(row('Margen bruto', totVentas - totCosto))
+      L.push(row('Gastos del período', -totGastos))
+      L.push(row('Utilidad estimada', totVentas - totCosto - totGastos))
+      L.push('')
+    }
+    if (selected.has('cxc')) {
+      const cxc = sales.filter((s) => s.credito && !s.pagado)
+      L.push(row('CUENTAS POR COBRAR (fiado pendiente)'))
+      L.push(row('Boleta', 'Fecha', 'Cliente', 'Teléfono', 'Total', 'Abonado', 'Saldo'))
+      for (const s of cxc) {
+        const abonado = (s.pagos || []).reduce((a, p) => a + p.monto, 0)
+        L.push(row(s.boleta, s.date.toLocaleDateString('es-CL'), s.cliente?.nombre || '', s.cliente?.telefono || '', s.total, abonado, s.montoPendiente ?? s.total - abonado))
+      }
+      L.push(row('TOTAL', '', '', '', '', '', cxc.reduce((a, s) => a + (s.montoPendiente ?? s.total), 0)))
+      L.push('')
+    }
+    if (selected.has('iva')) {
+      const conResp = gastosR.filter((g) => g.respaldo !== false).reduce((a, g) => a + g.monto, 0)
+      const debito = Math.round((totVentas * 0.19) / 1.19)
+      const credito = Math.round((conResp * 0.19) / 1.19)
+      L.push(row('IVA ESTIMADO (revisar con contador)'))
+      L.push(row('Ventas brutas', totVentas))
+      L.push(row('IVA débito (19% incluido)', debito))
+      L.push(row('Gastos con respaldo', conResp))
+      L.push(row('IVA crédito', credito))
+      L.push(row('IVA estimado a pagar', Math.max(0, debito - credito)))
+      L.push('')
+    }
+    if (selected.has('nomina')) {
+      L.push(row('NÓMINA INTERNA'))
+      L.push(row('Nombre', 'Cargo', 'Tipo', 'Día de pago', 'Monto', 'Bono', 'Estado'))
+      for (const n of nomina) L.push(row(n.nombre, n.cargo, n.tipo, n.dia, n.monto, n.bono || 0, n.estado))
+      L.push(row('TOTAL', '', '', '', nomina.reduce((a, n) => a + n.monto + (n.bono || 0), 0)))
+      L.push('')
+    }
+    if (selected.has('inventario')) {
+      L.push(row('INVENTARIO VALORIZADO (al día de hoy)'))
+      L.push(row('Producto', 'Categoría', 'Stock', 'Costo unitario', 'Valor stock'))
+      for (const p of products) L.push(row(p.name, p.cat, p.stock, p.cost, p.stock * p.cost))
+      L.push(row('TOTAL', '', '', '', m.valInventario))
+      L.push('')
+    }
+    if (selected.has('marketing')) {
+      L.push(row('MARKETING'))
+      L.push(row('Campaña', 'Canal', 'Fecha', 'Inversión', 'Ventas atribuidas', 'Clientes nuevos'))
+      for (const mk of marketing) L.push(row(mk.campaign, mk.canal, mk.fecha.toLocaleDateString('es-CL'), mk.monto, mk.ventasGeneradas, mk.clientesNuevos))
+      L.push('')
+    }
+
+    downloadBlob(L.join('\r\n'), `contador_${period}_${new Date().toLocaleDateString('es-CL').replace(/\//g, '-')}.csv`)
+    toast('Resumen para contador descargado')
   }
 
   return (
@@ -500,9 +601,7 @@ function FinExportar() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button className="btn btn-primary btn-lg" onClick={() => mockExport('Excel (.xlsx)')}><Icon name="download" size={18} />Descargar Excel</button>
-        <button className="btn btn-ghost btn-lg" onClick={() => mockExport('CSV')}><Icon name="download" size={16} />Descargar CSV</button>
-        <button className="btn btn-ghost btn-lg" onClick={() => mockExport('PDF resumen')}><Icon name="receipt" size={16} />PDF resumen</button>
+        <button className="btn btn-primary btn-lg" disabled={selected.size === 0} onClick={exportar}><Icon name="download" size={18} />Descargar resumen (CSV para Excel)</button>
       </div>
       <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center' }}>
         <Icon name="shield" size={13} />Esta sección es una ayuda de orden interno. No reemplaza a tu contador.

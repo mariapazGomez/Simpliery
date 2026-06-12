@@ -76,7 +76,7 @@ export function FinResumen({ setTab }: { setTab: (t: string) => void }) {
     m.gastosPendientes > 100000 && { tone: 'warn', icon: 'coins', text: `Tienes ${fmtCLP(m.gastosPendientes)} en gastos pendientes de pago.`, action: { label: 'Ver gastos', fn: () => setTab('cxp') } },
     pctNomina > 30 && { tone: 'warn', icon: 'nomina', text: `Tu nómina representa el ${Math.round(pctNomina)}% de tus ventas. Está sobre lo recomendado.` },
     m.proximos7 > 0 && { tone: 'primary', icon: 'clientes', text: `${m.proximos7} clientes próximos a recomprar. Buen momento para activarlos.` },
-    m.prodBajaRotacion > 5 && { tone: 'warn', icon: 'box', text: `${m.prodBajaRotacion} productos con baja rotación inmovilizan ${fmtCLP(m.valInventario * 0.3)} en caja.` },
+    m.prodBajaRotacion > 5 && { tone: 'warn', icon: 'box', text: `${m.prodBajaRotacion} productos con baja rotación inmovilizan ${fmtCLP(m.valBajaRotacion)} en caja.` },
     { tone: 'ok', icon: 'trendUp', text: `Margen promedio ${fmtPct(m.margenProm)} — cada ${fmtCLP(1000)} en ventas genera ${fmtCLP(Math.round(m.margenProm * 10))} de ganancia.` },
   ].filter((d): d is Decision => Boolean(d))
 

@@ -160,6 +160,8 @@ export interface Gasto {
   recurrente: boolean
   proveedor: string
   estado: 'pagado' | 'pendiente'
+  /** ¿Tiene boleta/factura? Da derecho a IVA crédito. Ausente = sí (retrocompatible). */
+  respaldo?: boolean
 }
 
 export interface NominaItem {

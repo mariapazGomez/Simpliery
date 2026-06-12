@@ -3,8 +3,8 @@
 // ---------- Finanzas: Estado de Resultados (portado de finanzas-resultados.jsx) ----------
 
 import { useState } from 'react'
-import { TODAY } from '@/lib/store'
-import { useFinanzas, useFinMetrics, GASTO_CATS, GASTO_ICONS, GASTO_COLORS } from '@/lib/finanzas-store'
+import { TODAY, useStore } from '@/lib/store'
+import { useFinanzas, GASTO_CATS, GASTO_ICONS, GASTO_COLORS } from '@/lib/finanzas-store'
 import { fmtCLP, fmtPct } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { FinCard } from '@/components/finanzas/shared'
@@ -23,26 +23,31 @@ interface ResultRow {
 }
 
 export function FinResultados() {
-  const m = useFinMetrics()
+  const { sales } = useStore()
   const { gastos } = useFinanzas()
   const [period, setPeriod] = useState('mes')
   const periods: [string, string][] = [['hoy', 'Hoy'], ['semana', 'Semana'], ['mes', 'Este mes'], ['anterior', 'Mes anterior']]
-  const factor = period === 'hoy' ? 0.04 : period === 'semana' ? 0.22 : period === 'anterior' ? 1.12 : 1
 
-  const ventasBrutas = Math.round(m.ingresosMes * factor)
-  const descuentos = Math.round(ventasBrutas * 0.023)
-  const devoluciones = Math.round(ventasBrutas * 0.008)
-  const ventasNetas = ventasBrutas - descuentos - devoluciones
-  const cpv = Math.round(m.costosMes * factor)
-  const merma = Math.round(cpv * 0.015)
-  const costoDespacho = Math.round(cpv * 0.025)
-  const totalCostos = cpv + merma + costoDespacho
+  // Rango REAL de fechas por período (nada de factores estimados).
+  const desde = new Date(TODAY)
+  let hasta = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 1)
+  if (period === 'hoy') desde.setHours(0, 0, 0, 0)
+  else if (period === 'semana') { desde.setDate(desde.getDate() - 6); desde.setHours(0, 0, 0, 0) }
+  else if (period === 'anterior') { desde.setFullYear(TODAY.getFullYear(), TODAY.getMonth() - 1, 1); desde.setHours(0, 0, 0, 0); hasta = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1) }
+  else { desde.setFullYear(TODAY.getFullYear(), TODAY.getMonth(), 1); desde.setHours(0, 0, 0, 0) }
+
+  const enRango = sales.filter((s) => s.date >= desde && s.date < hasta)
+  // El total guardado ya viene con descuento: bruto = neto + descuentos.
+  const ventasNetas = enRango.reduce((a, s) => a + s.total, 0)
+  const descuentos = enRango.reduce((a, s) => a + (s.descuento?.amount || 0), 0)
+  const ventasBrutas = ventasNetas + descuentos
+  const cpv = enRango.reduce((a, s) => a + s.cost, 0)
+  const totalCostos = cpv
   const margenBruto = ventasNetas - totalCostos
   const margenBrutoPct = ventasNetas ? (margenBruto / ventasNetas) * 100 : 0
 
-  // Gastos operacionales
-  const mesInicio = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
-  const gastosMes = gastos.filter((g) => g.fecha >= mesInicio)
+  // Gastos operacionales del MISMO período
+  const gastosMes = gastos.filter((g) => g.fecha >= desde && g.fecha < hasta)
   const bycat = GASTO_CATS.reduce<Record<string, number>>((a, c) => {
     a[c] = gastosMes.filter((g) => g.cat === c).reduce((s, g) => s + g.monto, 0)
     return a
@@ -55,13 +60,10 @@ export function FinResultados() {
   const rows_ing: ResultRow[] = [
     { label: 'Ventas brutas', v: ventasBrutas, indent: 0, bold: false },
     { label: '(-) Descuentos', v: -descuentos, indent: 1, muted: true },
-    { label: '(-) Devoluciones', v: -devoluciones, indent: 1, muted: true },
     { label: 'Ventas netas', v: ventasNetas, indent: 0, bold: true, highlight: 'primary' },
   ]
   const rows_cos: ResultRow[] = [
     { label: 'Costo productos vendidos', v: -cpv, indent: 1 },
-    { label: 'Merma / pérdida stock', v: -merma, indent: 1, muted: true },
-    { label: 'Costo despacho', v: -costoDespacho, indent: 1, muted: true },
     { label: 'Margen bruto', v: margenBruto, indent: 0, bold: true, highlight: margenBrutoPct > 25 ? 'ok' : 'warn' },
   ]
   const rows_op: ResultRow[] = Object.entries(bycat).filter(([, v]) => v > 0).map(([cat, v]) => ({ label: cat, v: -v, indent: 1, icon: GASTO_ICONS[cat], color: GASTO_COLORS[cat] }))
