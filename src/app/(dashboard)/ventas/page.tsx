@@ -42,6 +42,8 @@ interface ClienteForm {
   direccion: string
   depto: string
   ciudad: string
+  /** Id del cliente registrado (cuando se eligió desde el autocompletado). */
+  clienteId?: string
 }
 
 const emptyCliente: ClienteForm = { nombre: '', numero: '', correo: '', direccion: '', depto: '', ciudad: '' }
@@ -192,7 +194,7 @@ function ClienteSelector({ tipo, cliente, setCliente }: { tipo: 'local' | 'despa
 
   const pickCliente = (c: Cliente) => {
     setSelected(c)
-    setCliente({ nombre: c.nombre, numero: c.telefono || '', correo: c.correo || '', direccion: c.direccion || '', depto: c.depto || '', ciudad: c.ciudad || '' })
+    setCliente({ nombre: c.nombre, numero: c.telefono || '', correo: c.correo || '', direccion: c.direccion || '', depto: c.depto || '', ciudad: c.ciudad || '', clienteId: c.id })
     setQ(c.nombre)
     setOpen(false)
   }
@@ -201,6 +203,15 @@ function ClienteSelector({ tipo, cliente, setCliente }: { tipo: 'local' | 'despa
     setCliente(emptyCliente)
     setQ('')
   }
+
+  // Si el formulario se vació desde afuera (cambio local↔despacho, venta confirmada),
+  // suelta también la tarjeta de cliente seleccionado para no mostrar uno "fantasma".
+  useEffect(() => {
+    if (selected && !cliente.nombre) {
+      setSelected(null)
+      setQ('')
+    }
+  }, [selected, cliente.nombre])
 
   // deuda del cliente seleccionado
   const clientDeuda = selected ? m.deudaPorCliente[selected.nombre]?.total || 0 : 0
@@ -385,7 +396,7 @@ function InlinePriceEdit({ value, onChange, label }: { value: number; onChange: 
   )
 }
 
-function CartItemRow({ i, setQty, setQtySimple, remove, setItemPrice, verDinero = true }: { i: CartLine; setQty: (id: number, fmt: string, d: number) => void; setQtySimple: (id: number, d: number) => void; remove: (id: number) => void; setItemPrice: (id: number, fid: string | undefined, v: number) => void; verDinero?: boolean }) {
+function CartItemRow({ i, setQty, setQtySimple, remove, setItemPrice, verDinero = true }: { i: CartLine; setQty: (id: number, fmt: string, d: number) => void; setQtySimple: (id: number, d: number) => void; remove: (id: number, fid?: string) => void; setItemPrice: (id: number, fid: string | undefined, v: number) => void; verDinero?: boolean }) {
   const isKg = /kg|kilo|gram|gr|g\b/i.test(i.unit || '')
   const priceChanged = i.price !== i.originalPrice
   const gain = (i.price - i.cost) * i.qty
@@ -410,7 +421,7 @@ function CartItemRow({ i, setQty, setQtySimple, remove, setItemPrice, verDinero 
           </button>
         </div>
         <div className="tnum" style={{ width: 72, textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{fmtCLP(i.price * i.qty)}</div>
-        <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24, color: 'var(--ink-3)' }} onClick={() => remove(i.productId)} title="Quitar">
+        <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24, color: 'var(--ink-3)' }} onClick={() => remove(i.productId, i.formatId)} title="Quitar">
           <Icon name="x" size={13} />
         </button>
       </div>
@@ -448,8 +459,6 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
   )
 }
 
-/** Venta confirmada con descuento para el comprobante. */
-type ConfirmedSale = Sale & { descuento?: { type: string; value: number; amount: number } | null }
 
 export default function VentasPage() {
   const { registrarVenta, settings, toast, products, addDespacho, categorias } = useStore()
@@ -461,7 +470,7 @@ export default function VentasPage() {
   const [method, setMethod] = useState('Efectivo')
   const [tipo, setTipo] = useState<'local' | 'despacho'>('local')
   const [cliente, setCliente] = useState<ClienteForm>(emptyCliente)
-  const [confirmed, setConfirmed] = useState<ConfirmedSale | null>(null)
+  const [confirmed, setConfirmed] = useState<Sale | null>(null)
   const [mixedPay, setMixedPay] = useState<{ secondary: string; amount: string } | null>(null)
   const [discount, setDiscount] = useState<{ type: 'pct' | 'fixed'; value: string }>({ type: 'pct', value: '' })
   // Estado del flujo móvil por pasos (catálogo → carrito → pago)
@@ -554,7 +563,9 @@ export default function VentasPage() {
       }),
     )
   const setItemPrice = (id: number, fid: string | undefined, newPrice: number) => setCart((c) => c.map((i) => (i.productId === id && (i.formatId || null) === (fid || null) ? { ...i, price: Math.max(0, +newPrice || 0) } : i)))
-  const remove = (id: number) => setCart((c) => c.filter((i) => i.productId !== id))
+  // Quita SOLO la línea exacta (producto + formato); antes borraba también las
+  // variantes hermanas del mismo producto.
+  const remove = (id: number, fid?: string) => setCart((c) => c.filter((i) => !(i.productId === id && (i.formatId || null) === (fid || null))))
 
   const subtotal = cart.reduce((a, i) => a + i.price * i.qty, 0)
   const costTotal = cart.reduce((a, i) => a + i.cost * i.qty, 0)
@@ -570,11 +581,16 @@ export default function VentasPage() {
 
   const confirm = async () => {
     if (!canConfirm) return
-    const clienteRef = { nombre: cliente.nombre, ciudad: cliente.ciudad, telefono: cliente.numero, numero: cliente.numero, correo: cliente.correo, direccion: cliente.direccion }
+    const clienteRef = { id: cliente.clienteId, nombre: cliente.nombre, ciudad: cliente.ciudad, telefono: cliente.numero, numero: cliente.numero, correo: cliente.correo, direccion: cliente.direccion, depto: cliente.depto }
     const items: SaleItem[] = cart.map((i) => ({ productId: i.productId, name: i.name, cat: i.cat, qty: i.qty, price: i.price, cost: i.cost, formatId: i.formatId, baseUnitsPerItem: i.baseUnitsPerItem }))
-    const sale = await registrarVenta(items, method, { tipo, cliente: cliente.nombre.trim() ? clienteRef : null })
-    const confirmedSale: ConfirmedSale = { ...sale, descuento: discAmt > 0 ? { type: discount.type, value: +discount.value, amount: discAmt } : null }
-    setConfirmed(confirmedSale)
+    const sale = await registrarVenta(items, method, {
+      tipo,
+      cliente: cliente.nombre.trim() ? clienteRef : null,
+      clienteId: cliente.clienteId || null,
+      descuento: discAmt > 0 ? { type: discount.type, value: +discount.value, amount: Math.round(discAmt) } : null,
+      pagoMixto: mixedPay && +mixedPay.amount > 0 && method !== 'Crédito' ? { metodo: mixedPay.secondary, monto: +mixedPay.amount } : null,
+    })
+    setConfirmed(sale)
     // Si es despacho, crea el despacho persistente (pendiente de enviar a OptiRoute).
     if (tipo === 'despacho') {
       addDespacho({
@@ -599,6 +615,7 @@ export default function VentasPage() {
     setCart([])
     setCliente(emptyCliente)
     setDiscount({ type: 'pct', value: '' })
+    setMixedPay(null)
     setMStep('catalogo')
     setShowCliente(false)
     setShowDiscount(false)

@@ -2,7 +2,7 @@
 
 // ---------- Cierre de caja: reconciliación de fin de jornada (portado de screen-cierreCaja.jsx) ----------
 import { useState } from 'react'
-import { useStore, TODAY } from '@/lib/store'
+import { useStore, TODAY, montosPorMetodo } from '@/lib/store'
 import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import { useGo } from '@/lib/nav'
 import { fmtCLP, fmtNum } from '@/lib/format'
@@ -51,10 +51,29 @@ export default function CierreCajaPage() {
 
   const totalVentas = salesHoy.reduce((a, s) => a + s.total, 0)
   const totalGanancia = salesHoy.reduce((a, s) => a + s.profit, 0)
-  const totalEfect = salesHoy.filter((s) => s.method === 'Efectivo').reduce((a, s) => a + s.total, 0)
-  const totalTarjeta = salesHoy.filter((s) => s.method === 'Tarjeta').reduce((a, s) => a + s.total, 0)
-  const totalTrans = salesHoy.filter((s) => s.method === 'Transferencia').reduce((a, s) => a + s.total, 0)
-  const totalCredito = salesHoy.filter((s) => s.method === 'Crédito').reduce((a, s) => a + s.total, 0)
+  // Dinero que ENTRÓ hoy por método: ventas de contado (con pago dividido incluido)
+  // + abonos de fiado recibidos hoy (entran a la caja física aunque la venta sea vieja).
+  const porMetodo: Record<string, number> = {}
+  for (const s of salesHoy) {
+    if (s.credito) continue // el fiado entra a caja cuando abona, no el día de la venta
+    for (const [metodo, monto] of montosPorMetodo(s)) porMetodo[metodo] = (porMetodo[metodo] || 0) + monto
+  }
+  let abonosHoy = 0
+  for (const s of sales) {
+    for (const p of s.pagos || []) {
+      const pf = new Date(p.fecha)
+      pf.setHours(0, 0, 0, 0)
+      if (pf.getTime() === hoy.getTime()) {
+        const metodo = p.metodo || 'Efectivo'
+        porMetodo[metodo] = (porMetodo[metodo] || 0) + p.monto
+        abonosHoy += p.monto
+      }
+    }
+  }
+  const totalEfect = porMetodo['Efectivo'] || 0
+  const totalTarjeta = porMetodo['Tarjeta'] || 0
+  const totalTrans = porMetodo['Transferencia'] || 0
+  const totalCredito = salesHoy.filter((s) => s.credito).reduce((a, s) => a + s.total, 0)
   const nBoletas = salesHoy.length
   const nItems = salesHoy.reduce((a, s) => a + s.items.reduce((b, i) => b + i.qty, 0), 0)
 
@@ -108,6 +127,7 @@ export default function CierreCajaPage() {
     { label: 'Efectivo (sistema)', v: totalEfect },
     { label: 'Tarjeta (sistema)', v: totalTarjeta },
     { label: 'Transferencia', v: totalTrans },
+    abonosHoy > 0 ? { label: 'Incluye abonos de fiado recibidos hoy', v: abonosHoy, muted: true } : null,
     totalCredito > 0 ? { label: 'Crédito pendiente', v: totalCredito, muted: true } : null,
   ]
 

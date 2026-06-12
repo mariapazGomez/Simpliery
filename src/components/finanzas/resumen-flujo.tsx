@@ -2,7 +2,7 @@
 
 // ---------- Finanzas: Resumen + Flujo de caja (portado de screen-finanzas.jsx) ----------
 
-import { useStore, useMetrics, TODAY } from '@/lib/store'
+import { useStore, useMetrics, TODAY, montosPorMetodo } from '@/lib/store'
 import { useFinanzas, useFinMetrics, GASTO_COLORS } from '@/lib/finanzas-store'
 import { fmtCLP, fmtPct } from '@/lib/format'
 import { Icon } from '@/components/icon'
@@ -241,7 +241,7 @@ export function FinFlujo() {
         }
       }
     } else if (s.date >= mesInicio) {
-      pagos[s.method] = (pagos[s.method] || 0) + s.total
+      for (const [metodo, monto] of montosPorMetodo(s)) pagos[metodo] = (pagos[metodo] || 0) + monto
     }
   }
   const gastosMes = gastos.filter((g) => g.fecha >= mesInicio)

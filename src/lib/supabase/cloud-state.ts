@@ -34,6 +34,30 @@ export function reviveDates<T>(v: T): T {
   return v
 }
 
+/**
+ * Trae TODAS las filas de una tabla, paginando de a 1000: PostgREST (Supabase)
+ * limita cada respuesta a 1000 filas, así que una colección grande (p. ej. una
+ * base de clientes importada) quedaría cortada si se pidiera de una sola vez.
+ * El orden (created_at desc, id) es estable para que las páginas no se traslapen.
+ */
+const PAGE = 1000
+export async function fetchAllRows<T>(table: string): Promise<{ rows: T[]; error: string | null }> {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('data')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) return { rows, error: error.message }
+    const chunk = ((data as { data: T }[] | null) ?? []).map((r) => r.data)
+    rows.push(...chunk)
+    if (chunk.length < PAGE) break
+  }
+  return { rows, error: null }
+}
+
 /** Perfil del usuario autenticado: su negocio y su rol. null mientras carga. */
 export function usePerfil(): { negocioId: string | null; rol: string | null } {
   const [perfil, setPerfil] = useState<{ negocioId: string | null; rol: string | null }>({ negocioId: null, rol: null })
@@ -95,11 +119,10 @@ export function useCloudCollection<T extends WithId>(
     if (!negocioId) return
     let alive = true
     ;(async () => {
-      const { data, error } = await supabase.from(table).select('data')
+      const { rows, error } = await fetchAllRows<T>(table)
       if (error) { console.error('Error cargando', table, error); reportCloudError(table, 'cargar') }
       if (!alive) return
-      const rows = ((data as { data: T }[] | null) ?? []).map((r) => reviveDates(r.data))
-      setState(rows)
+      setState(rows.map((r) => reviveDates(r)))
       setReady(true)
     })()
     return () => { alive = false }

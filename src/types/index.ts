@@ -41,12 +41,15 @@ export interface SaleItem {
 
 /** Datos del cliente embebidos en una venta (despacho/crédito). */
 export interface ClienteRef {
+  /** Id del cliente de la base (si la venta se hizo a un cliente registrado). */
+  id?: string
   nombre: string
   ciudad?: string
   telefono?: string
   numero?: string
   correo?: string
   direccion?: string
+  depto?: string
 }
 
 export interface Pago {
@@ -62,6 +65,7 @@ export interface Sale {
   date: Date
   items: SaleItem[]
   method: string
+  /** Total REALMENTE cobrado (con descuento ya aplicado). */
   total: number
   cost: number
   profit: number
@@ -71,6 +75,10 @@ export interface Sale {
   pagado: boolean
   montoPendiente: number
   pagos: Pago[]
+  /** Descuento aplicado a la boleta (si hubo). `total` ya lo descuenta. */
+  descuento?: { type: 'pct' | 'fixed'; value: number; amount: number } | null
+  /** Pago dividido: `monto` se pagó con `metodo` secundario; el resto con `method`. */
+  pagoMixto?: { metodo: string; monto: number } | null
 }
 
 /** Compra histórica dentro de la ficha de un cliente. */

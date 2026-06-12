@@ -4,6 +4,7 @@
 // Reemplaza a las operaciones sobre localStorage (que ya no es la fuente de datos).
 // El respaldo descarga un .json con todos los datos del negocio desde Supabase.
 import { createClient } from '@/lib/supabase/client'
+import { fetchAllRows } from '@/lib/supabase/cloud-state'
 
 const supabase = createClient()
 
@@ -41,11 +42,11 @@ export async function exportCloudBackup(): Promise<number> {
   const collections: Record<string, unknown[]> = {}
   let count = 0
   for (const t of COLLECTION_TABLES) {
-    const { data, error } = await supabase.from(t).select('data')
-    if (error) throw new Error(`${t}: ${error.message}`)
-    const arr = ((data as { data: unknown }[] | null) ?? []).map((r) => r.data)
-    collections[t] = arr
-    count += arr.length
+    // Paginado: sin esto, tablas con más de 1000 filas quedarían cortadas en el respaldo.
+    const { rows, error } = await fetchAllRows<unknown>(t)
+    if (error) throw new Error(`${t}: ${error}`)
+    collections[t] = rows
+    count += rows.length
   }
   const { data: cfg } = await supabase.from('configuracion').select('data').maybeSingle()
   const { data: cat } = await supabase.from('categorias').select('lista').maybeSingle()
@@ -76,9 +77,12 @@ async function upsertRows(table: string, arr: unknown, negocioId: string): Promi
   const rows = (arr as RowObj[])
     .filter((r) => r && r.id != null)
     .map((r) => ({ id: r.id as string | number, negocio_id: negocioId, data: r }))
-  if (!rows.length) return 0
-  const { error } = await supabase.from(table).upsert(rows)
-  if (error) throw new Error(`${table}: ${error.message}`)
+  // Por lotes: una restauración grande (miles de filas) en un solo request puede
+  // exceder el límite de tamaño del API.
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await supabase.from(table).upsert(rows.slice(i, i + 500))
+    if (error) throw new Error(`${table}: ${error.message}`)
+  }
   return rows.length
 }
 

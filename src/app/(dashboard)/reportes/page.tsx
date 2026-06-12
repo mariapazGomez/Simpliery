@@ -2,7 +2,7 @@
 
 // ---------- Reportes (portado de screen-reportes.jsx) ----------
 import { useState, useMemo } from 'react'
-import { useStore, useMetrics, TODAY } from '@/lib/store'
+import { useStore, useMetrics, TODAY, montosPorMetodo } from '@/lib/store'
 import { fmtCLP, fmtNum, fmtPct, catColor } from '@/lib/format'
 import { exportVentasCSV, exportProductosCSV } from '@/lib/exports'
 import { Icon } from '@/components/icon'
@@ -158,7 +158,7 @@ export default function ReportesPage() {
     const fPay: Record<string, number> = {}
     for (const s of inRange) {
       if (s.credito) continue // el crédito entra a caja vía abonos, no como venta
-      fPay[s.method] = (fPay[s.method] || 0) + s.total
+      for (const [metodo, monto] of montosPorMetodo(s)) fPay[metodo] = (fPay[metodo] || 0) + monto
     }
     for (const s of sales) {
       if (!s.credito) continue

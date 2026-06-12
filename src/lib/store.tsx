@@ -10,7 +10,7 @@ import { usePerfil, useCloudCollection, useCloudSingleton, setCloudErrorHandler 
 import { createClient } from '@/lib/supabase/client'
 import { PRODUCT_UNITS } from '@/types'
 import type {
-  Product, Sale, SaleItem, Cliente, Movement, Settings, ClienteRef, ClientMetrics, Despacho,
+  Product, Sale, SaleItem, Cliente, Compra, Movement, Settings, ClienteRef, ClientMetrics, Despacho,
 } from '@/types'
 
 const supabase = createClient()
@@ -79,7 +79,7 @@ export function exportCSV(filename: string, rows: (string | number)[][]) {
 }
 
 export function buildSalesCSV(sales: Sale[], label: string) {
-  const headers = ['Boleta', 'Fecha', 'Hora', 'Categoría', 'Producto', 'Cantidad', 'Precio Unitario', 'Total Item', 'Costo Item', 'Ganancia Item', 'Método Pago', 'Tipo Venta', 'Cliente', 'Ciudad', 'Teléfono', 'Correo']
+  const headers = ['Boleta', 'Fecha', 'Hora', 'Categoría', 'Producto', 'Cantidad', 'Precio Unitario', 'Total Item', 'Costo Item', 'Ganancia Item', 'Método Pago', 'Tipo Venta', 'Cliente', 'Ciudad', 'Teléfono', 'Correo', 'Descuento Boleta', 'Total Boleta']
   const rows: (string | number)[][] = [headers]
   for (const s of sales) {
     const fecha = s.date.toLocaleDateString('es-CL')
@@ -87,7 +87,7 @@ export function buildSalesCSV(sales: Sale[], label: string) {
     const tipo = s.tipo || 'local'
     const cl = s.cliente || ({} as ClienteRef)
     for (const it of s.items) {
-      rows.push([s.boleta, fecha, hora, it.cat, it.name, it.qty, it.price, it.price * it.qty, it.cost, it.price * it.qty - it.cost * it.qty, s.method, tipo, cl.nombre || '', cl.ciudad || '', cl.numero || '', cl.correo || ''])
+      rows.push([s.boleta, fecha, hora, it.cat, it.name, it.qty, it.price, it.price * it.qty, it.cost, it.price * it.qty - it.cost * it.qty, s.method, tipo, cl.nombre || '', cl.ciudad || '', cl.numero || '', cl.correo || '', s.descuento?.amount || 0, s.total])
     }
   }
   exportCSV(`ventas_${label}_${new Date().toLocaleDateString('es-CL').replace(/\//g, '-')}.csv`, rows)
@@ -102,6 +102,23 @@ interface Toast {
 interface RegistrarVentaExtra {
   tipo?: 'local' | 'despacho'
   cliente?: ClienteRef | null
+  /** Id del cliente registrado al que se le vende (para alimentar su historial). */
+  clienteId?: string | null
+  /** Descuento de la boleta: el total de la venta queda YA descontado. */
+  descuento?: Sale['descuento']
+  /** Pago dividido en dos métodos. */
+  pagoMixto?: Sale['pagoMixto']
+}
+
+/**
+ * Cuánto entró por cada método de pago en una venta (soporta pago dividido).
+ * Única fuente de verdad para cierre de caja, flujo y reportes.
+ */
+export function montosPorMetodo(s: Sale): [string, number][] {
+  const mixto = s.pagoMixto
+  if (!mixto || !mixto.monto || s.method === 'Crédito') return [[s.method, s.total]]
+  const secundario = Math.min(mixto.monto, s.total)
+  return [[s.method, s.total - secundario], [mixto.metodo, secundario]]
 }
 
 interface StoreValue {
@@ -179,7 +196,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const registrarVenta = useCallback(
     async (items: SaleItem[], method: string, extra: RegistrarVentaExtra = {}) => {
-      const total = items.reduce((a, it) => a + it.price * it.qty, 0)
+      const bruto = items.reduce((a, it) => a + it.price * it.qty, 0)
+      // El descuento rebaja el total registrado: lo que queda en el sistema es lo
+      // que realmente se cobró (así cuadran caja, finanzas y reportes).
+      const desc = extra.descuento ? Math.min(extra.descuento.amount, bruto) : 0
+      const total = bruto - desc
       const cost = items.reduce((a, it) => a + it.cost * it.qty, 0)
       // Folio atómico desde el servidor (evita boletas duplicadas con varios vendedores).
       // Si falla la red, cae al cálculo local como respaldo.
@@ -192,8 +213,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         id: 'b' + boleta, boleta, date: new Date(), items, method, total, cost, profit: total - cost,
         tipo: extra.tipo || 'local', cliente: extra.cliente || null,
         credito: esCredito, pagado: !esCredito, montoPendiente: esCredito ? total : 0, pagos: [],
+        descuento: extra.descuento || null, pagoMixto: esCredito ? null : extra.pagoMixto || null,
       }
       setSales((s) => [sale, ...s])
+      // La venta alimenta la ficha del cliente: su historial de compras crece y,
+      // si es un cliente nuevo, se crea en la base. Se busca por id (seleccionado),
+      // luego por teléfono y por nombre exacto, para no duplicar.
+      const ref = extra.cliente
+      if (ref && ref.nombre.trim()) {
+        const compra: Compra = { id: sale.id, boleta, date: sale.date, items, method, total, cost, profit: total - cost }
+        setClientes((cs) => {
+          const fono = (ref.numero || ref.telefono || '').replace(/\D/g, '')
+          const nombreL = ref.nombre.trim().toLowerCase()
+          let idx = extra.clienteId ? cs.findIndex((c) => c.id === extra.clienteId) : -1
+          if (idx < 0 && fono) idx = cs.findIndex((c) => (c.telefono || '').replace(/\D/g, '') === fono)
+          if (idx < 0) idx = cs.findIndex((c) => c.nombre.trim().toLowerCase() === nombreL)
+          if (idx < 0) {
+            const nuevo: Cliente = {
+              id: 'cl' + sale.id, nombre: ref.nombre.trim(), telefono: ref.numero || ref.telefono || '',
+              correo: ref.correo || '', ciudad: ref.ciudad || '', createdAt: new Date(), nota: '',
+              compras: [compra],
+              ...(ref.direccion ? { direccion: ref.direccion } : {}),
+              ...(ref.depto ? { depto: ref.depto } : {}),
+            }
+            return [nuevo, ...cs]
+          }
+          return cs.map((c, i) => {
+            if (i !== idx) return c
+            // Completa SOLO los datos que el cliente no tenía (no pisa los existentes).
+            return {
+              ...c,
+              telefono: c.telefono || ref.numero || ref.telefono || '',
+              correo: c.correo || ref.correo || '',
+              ciudad: c.ciudad || ref.ciudad || '',
+              direccion: c.direccion || ref.direccion || c.direccion,
+              depto: c.depto || ref.depto || c.depto,
+              compras: [...c.compras, compra],
+            }
+          })
+        })
+      }
       setProducts((ps) =>
         ps.map((p) => {
           const simpleIt = items.find((i) => i.productId === p.id && !i.formatId)
@@ -213,7 +272,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toast('Venta registrada · ' + fmtCLP(total))
       return sale
     },
-    [sales, setSales, setProducts, setMovements, toast],
+    [sales, setSales, setProducts, setMovements, setClientes, toast],
   )
 
   const deleteSale = useCallback((saleId: string) => {
@@ -236,8 +295,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...mv,
     ])
     setSales((ss) => ss.filter((s) => s.id !== saleId))
+    // También sale del historial del cliente (la venta "no ocurrió").
+    setClientes((cs) => cs.map((c) => (c.compras.some((x) => x.id === saleId) ? { ...c, compras: c.compras.filter((x) => x.id !== saleId) } : c)))
     toast('Transacción eliminada · stock repuesto')
-  }, [sales, setProducts, setMovements, setSales, toast])
+  }, [sales, setProducts, setMovements, setSales, setClientes, toast])
 
   const updateSale = useCallback((saleId: string, patch: Partial<Sale>) => {
     setSales((ss) => ss.map((s) => (s.id === saleId ? { ...s, ...patch } : s)))
@@ -434,7 +495,7 @@ export function useMetrics() {
     cats.forEach((c) => (c.share = totRevenue ? (c.revenue / totRevenue) * 100 : 0))
 
     const pay: Record<string, number> = {}
-    for (const s of todaySales) pay[s.method] = (pay[s.method] || 0) + s.total
+    for (const s of todaySales) for (const [metodo, monto] of montosPorMetodo(s)) pay[metodo] = (pay[metodo] || 0) + monto
 
     const topProducts = [...products].sort((a, b) => b.sold - a.sold).slice(0, 6)
     const bestMargin = [...products].filter((p) => p.price > 0).sort((a, b) => b.marginPct - a.marginPct).slice(0, 5)
@@ -442,24 +503,6 @@ export function useMetrics() {
 
     const lowStock = products.filter((p) => stockState(p) !== 'ok')
     const topCat = cats[0]
-
-    function canalMetrics(salesArr: Sale[]) {
-      const local = salesArr.filter((s) => (s.tipo || 'local') === 'local')
-      const despacho = salesArr.filter((s) => s.tipo === 'despacho')
-      const calc = (arr: Sale[]) => ({ count: arr.length, total: arr.reduce((a, s) => a + s.total, 0), cost: arr.reduce((a, s) => a + s.cost, 0), profit: arr.reduce((a, s) => a + s.profit, 0) })
-      const lm = calc(local)
-      const dm = calc(despacho)
-      return {
-        local: { ...lm, margin: lm.total ? (lm.profit / lm.total) * 100 : 0, ticket: lm.count ? lm.total / lm.count : 0 },
-        despacho: { ...dm, margin: dm.total ? (dm.profit / dm.total) * 100 : 0, ticket: dm.count ? dm.total / dm.count : 0 },
-      }
-    }
-    const canalHoy = canalMetrics(todaySales)
-    const localShare = todayTotal > 0 ? canalHoy.local.total / todayTotal : 0.62
-    const canalMes = {
-      local: { count: Math.round(boletas * localShare * 25), total: totRevenue * localShare, cost: totCost * localShare, profit: totProfit * localShare, margin: totRevenue ? (totProfit / totRevenue) * 100 : 0, ticket: (totRevenue * localShare) / (boletas * localShare * 25 || 1) },
-      despacho: { count: Math.round(boletas * (1 - localShare) * 25), total: totRevenue * (1 - localShare), cost: totCost * (1 - localShare), profit: totProfit * (1 - localShare), margin: totRevenue ? (totProfit / totRevenue) * 100 : 0, ticket: (totRevenue * (1 - localShare)) / (boletas * (1 - localShare) * 25 || 1) },
-    }
 
     const deudaPendiente = sales.filter((s) => s.credito && !s.pagado)
     const totalDeuda = deudaPendiente.reduce((a, s) => a + (s.montoPendiente || s.total), 0)
@@ -476,7 +519,6 @@ export function useMetrics() {
       todaySales, todayTotal, todayProfit, todayCost, boletas, avgMargin,
       cats, totRevenue, totCost, totProfit, totMargin: totRevenue ? (totProfit / totRevenue) * 100 : 0,
       pay, topProducts, bestMargin, worstMargin, lowStock, topCat,
-      canalHoy, canalMes,
       totalDeuda, clientesDeudores: clientesDeudoresList.length, deudaPorCliente, deudaPendiente,
     }
   }, [products, sales])

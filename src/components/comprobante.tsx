@@ -8,14 +8,8 @@ import { fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import type { Sale } from '@/types'
 
-/**
- * El prototipo guardaba un descuento y un saldo pendiente en la venta. El tipo
- * `Sale` de la fundación no los define, así que los aceptamos de forma opcional.
- */
-type ComprobanteSale = Sale & {
-  descuento?: { type: string; value: number; amount: number } | null
-  balance?: number
-}
+/** `Sale.total` ya viene con el descuento aplicado; el subtotal se calcula desde los ítems. */
+type ComprobanteSale = Sale & { balance?: number }
 
 const PRINT_CSS = `
 @media print {
@@ -51,8 +45,10 @@ export function ComprobanteModal({
     document.head.appendChild(s)
   }, [])
 
-  const totalFinal = sale.total - (sale.descuento?.amount || 0)
+  const subtotal = sale.items.reduce((a, i) => a + i.price * i.qty, 0)
+  const totalFinal = sale.total
   const hasCliente = !!(sale.cliente?.nombre && sale.cliente.nombre !== 'Cliente general')
+  const mixto = sale.pagoMixto && sale.pagoMixto.monto > 0 ? sale.pagoMixto : null
 
   // Texto para compartir por WhatsApp
   const waText = encodeURIComponent(
@@ -156,7 +152,7 @@ export function ComprobanteModal({
             {/* Totals */}
             <div style={lineStyle}>
               <span>Subtotal</span>
-              <span className="tnum">{fmtCLP(sale.total)}</span>
+              <span className="tnum">{fmtCLP(subtotal)}</span>
             </div>
             {(sale.descuento?.amount || 0) > 0 && (
               <div style={{ ...lineStyle, color: 'var(--primary-700)', fontWeight: 700 }}>
@@ -168,10 +164,23 @@ export function ComprobanteModal({
               <span>TOTAL</span>
               <span className="tnum">{fmtCLP(totalFinal)}</span>
             </div>
-            <div style={{ ...lineStyle, fontSize: 12, color: '#555' }}>
-              <span>Método de pago</span>
-              <span>{sale.method}</span>
-            </div>
+            {mixto ? (
+              <>
+                <div style={{ ...lineStyle, fontSize: 12, color: '#555' }}>
+                  <span>Pago {sale.method}</span>
+                  <span className="tnum">{fmtCLP(Math.max(0, sale.total - mixto.monto))}</span>
+                </div>
+                <div style={{ ...lineStyle, fontSize: 12, color: '#555' }}>
+                  <span>Pago {mixto.metodo}</span>
+                  <span className="tnum">{fmtCLP(Math.min(mixto.monto, sale.total))}</span>
+                </div>
+              </>
+            ) : (
+              <div style={{ ...lineStyle, fontSize: 12, color: '#555' }}>
+                <span>Método de pago</span>
+                <span>{sale.method}</span>
+              </div>
+            )}
             {sale.method === 'Crédito' && (
               <div style={{ ...lineStyle, fontSize: 12, color: '#c00', fontWeight: 700 }}>
                 <span>Saldo pendiente</span>
