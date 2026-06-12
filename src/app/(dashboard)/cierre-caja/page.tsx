@@ -60,6 +60,7 @@ export default function CierreCajaPage() {
   }
   let abonosHoy = 0
   for (const s of sales) {
+    if (!s.credito) continue // solo abonos de fiado (una venta de contado ya cuenta entera)
     for (const p of s.pagos || []) {
       const pf = new Date(p.fecha)
       pf.setHours(0, 0, 0, 0)

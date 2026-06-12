@@ -301,14 +301,30 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
     const cliente: ClienteRef | null =
       conCliente && nombre.trim()
         ? {
+            id: cl?.id,
             nombre: nombre.trim(),
             telefono: telefono.trim() || undefined,
+            numero: telefono.trim() || undefined,
             ciudad: ciudad.trim() || undefined,
             direccion: direccion.trim() || undefined,
             correo: correo.trim() || undefined,
+            depto: cl?.depto,
           }
         : null
-    updateSale(venta.id, { tipo, method, cliente })
+    // Cambiar el método mantiene coherente el estado de crédito: convertida a
+    // contado deja de ser deuda; convertida a Crédito debe lo aún no abonado.
+    // Si el método cambió, el pago dividido anterior ya no aplica.
+    const esCredito = method === 'Crédito'
+    const totalPagado = (venta.pagos || []).reduce((a, p) => a + p.monto, 0)
+    updateSale(venta.id, {
+      tipo,
+      method,
+      cliente,
+      credito: esCredito,
+      pagado: esCredito ? totalPagado >= venta.total : true,
+      montoPendiente: esCredito ? Math.max(0, venta.total - totalPagado) : 0,
+      ...(method !== venta.method ? { pagoMixto: null } : {}),
+    })
     onClose()
   }
 
