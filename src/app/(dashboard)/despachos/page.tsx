@@ -3,6 +3,7 @@
 // ---------- Despachos: pedidos persistentes + integración OptiRoute ----------
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '@/lib/store'
+import { useFinanzas } from '@/lib/finanzas-store'
 import { fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, Mini } from '@/components/ui'
@@ -31,10 +32,13 @@ function EstadoChip({ estado, size = 'sm' }: { estado: Estado; size?: 'sm' | 'lg
 
 /* ── Detalle pedido modal ─────────────────────────────── */
 function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pedido: Pedido; onClose: () => void; onUpdate: (id: string, patch: Partial<Despacho>) => void; onEnviar: (d: Pedido) => void; onActualizar: (d: Pedido) => void }) {
+  const { despachos } = useStore()
+  const { nomina } = useFinanzas()
   const [estado, setEstado] = useState<Estado>(pedido.estado)
   const [obs, setObs] = useState(pedido.nota || '')
   const [rep, setRep] = useState(pedido.repartidor)
-  const repartidores = ['Sin asignar', 'Carlos Vega', 'Pedro Rojas']
+  // Repartidores REALES: tu nómina + los ya usados en otros despachos (escribe uno nuevo si quieres).
+  const repartidores = [...new Set(['Sin asignar', ...nomina.map((n) => n.nombre), ...despachos.map((d) => d.repartidor)])].filter(Boolean)
   const dirCompleta = pedido.direccion + (pedido.depto ? ', ' + pedido.depto : '') + (pedido.ciudad ? ', ' + pedido.ciudad : '')
   const waUrl = `https://wa.me/${(pedido.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${pedido.cliente.split(' ')[0]}, te escribimos para coordinar tu entrega.${pedido.trackingUrl ? ' Puedes seguir tu pedido aquí: ' + pedido.trackingUrl : ''}`)}`
   const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(dirCompleta)}`
@@ -47,7 +51,7 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pe
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
-          <button className="btn btn-primary" onClick={() => { onUpdate(pedido.id, { estado, nota: obs, repartidor: rep }); onClose() }}>
+          <button className="btn btn-primary" onClick={() => { onUpdate(pedido.id, { estado, nota: obs, repartidor: rep.trim() || 'Sin asignar' }); onClose() }}>
             <Icon name="check" size={15} />
             Guardar cambios
           </button>
@@ -93,9 +97,10 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pe
         {/* Repartidor */}
         <label className="field">
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-2)' }}>Repartidor</span>
-          <select className="select" value={rep} onChange={(e) => setRep(e.target.value)}>
-            {repartidores.map((r) => (<option key={r}>{r}</option>))}
-          </select>
+          <input className="input" list="repartidores-sugeridos" value={rep} onChange={(e) => setRep(e.target.value)} placeholder="Escribe un nombre o elige uno" />
+          <datalist id="repartidores-sugeridos">
+            {repartidores.map((r) => (<option key={r} value={r} />))}
+          </datalist>
         </label>
         {/* Dirección */}
         <div style={{ padding: '12px 14px', background: 'var(--surface-3)', borderRadius: 11 }}>

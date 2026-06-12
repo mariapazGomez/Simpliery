@@ -48,7 +48,7 @@ export function FinResumen({ setTab }: { setTab: (t: string) => void }) {
   // Balance data
   const totalDeudaExt = (creditos || []).filter((c) => c.estado !== 'pagado').reduce((a, c) => a + c.saldo, 0)
   const cuotasMes = (creditos || []).filter((c) => c.estado !== 'pagado').reduce((a, c) => a + c.cuotaMensual, 0)
-  const caja = Math.max(0, m.utilidadEstimada + 200000)
+  const caja = Math.max(0, m.utilidadEstimada)
   const totalActivos = caja + m.valInventario + (mbi.totalDeuda || 0)
   const totalPasivos = totalDeudaExt + m.gastosPendientes
   const patrimonio = totalActivos - totalPasivos

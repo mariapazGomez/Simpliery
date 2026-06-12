@@ -8,7 +8,6 @@ import { Icon } from '@/components/icon'
 import { PageHeader, Metric, SearchBox, CatDot, Field, Mini, EmptyState, Modal } from '@/components/ui'
 import { StockChip } from '@/components/charts'
 import { FormatBreakdown } from '@/components/formatos'
-import { CATEGORIES } from '@/lib/data'
 import type { Product } from '@/types'
 
 function ReponerModal({ product, onClose }: { product: Product; onClose: () => void }) {
@@ -89,14 +88,15 @@ function AjusteModal({ product, onClose }: { product: Product; onClose: () => vo
 }
 
 export default function InventarioPage() {
-  const { products, movements } = useStore()
+  const { products, movements, categorias } = useStore()
   const [cat, setCat] = useState('Todas')
   const [q, setQ] = useState('')
   const [onlyCrit, setOnlyCrit] = useState(false)
   const [repo, setRepo] = useState<Product | null>(null)
   const [aj, setAj] = useState<Product | null>(null)
   const [tab, setTab] = useState<'stock' | 'hist'>('stock')
-  const cats = useMemo(() => ['Todas', ...new Set([...products.map((p) => p.cat), ...CATEGORIES])], [products])
+  // Categorías REALES del negocio (las del store + las que usan los productos).
+  const cats = useMemo(() => ['Todas', ...new Set([...categorias, ...products.map((p) => p.cat)])], [categorias, products])
 
   const reponerList = products.filter((p) => stockState(p) !== 'ok').sort((a, b) => a.stock - a.min - (b.stock - b.min))
   const list = products.filter((p) => (cat === 'Todas' || p.cat === cat) && p.name.toLowerCase().includes(q.toLowerCase()) && (!onlyCrit || stockState(p) !== 'ok'))

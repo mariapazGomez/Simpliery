@@ -336,7 +336,7 @@ export function FinBalance() {
   const totalCxP = m.gastosPendientes || 0
 
   // ACTIVOS
-  const caja = Math.max(0, m.utilidadEstimada + 200000) // estimated cash
+  const caja = Math.max(0, m.utilidadEstimada) // caja estimada = utilidad del mes (sin montos inventados)
   const inventario = m.valInventario
   const cuentXCobrar = totalCxC
   const otrosActivos = 0
