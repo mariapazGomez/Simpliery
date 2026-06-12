@@ -173,8 +173,8 @@ export default function SegmentosPage() {
 
   const WA_TEMPLATES = [
     { label: 'Recordatorio suave', text: 'Hola {{nombre}}, te recordamos que ya ha pasado un tiempo desde tu última visita a {{negocio}}. ¡Tenemos novedades esperando por ti!' },
-    { label: 'Promoción personalizada', text: 'Hola {{nombre}} 🎉 Esta semana en {{negocio}} tenemos ofertas especiales. ¡Ven a vernos o escúbenos para coordinar tu pedido!' },
-    { label: 'Recuperación', text: 'Hola {{nombre}}, notamos que llevas un tiempo sin visitarnos. En {{negocio}} te extramos. ¿Hay algo en lo que podamos ayudarte?' },
+    { label: 'Promoción personalizada', text: 'Hola {{nombre}} 🎉 Esta semana en {{negocio}} tenemos ofertas especiales. ¡Ven a vernos o escríbenos para coordinar tu pedido!' },
+    { label: 'Recuperación', text: 'Hola {{nombre}}, notamos que llevas un tiempo sin visitarnos. En {{negocio}} te extrañamos. ¿Hay algo en lo que podamos ayudarte?' },
     { label: 'Post compra', text: 'Hola {{nombre}} 😊 ¡Gracias por tu compra en {{negocio}}! Esperamos que todo haya sido de tu agrado. Cualquier cosa, estamos aquí.' },
     { label: 'Cliente frecuente', text: 'Hola {{nombre}}, eres uno de nuestros clientes más especiales en {{negocio}}. Queremos ofrecerte atención personalizada. ¿Nos escribes cuando necesites algo?' },
     { label: 'Nueva temporada', text: 'Hola {{nombre}}, llegaron productos nuevos a {{negocio}} que sabemos que te van a gustar. ¡Date una vuelta o pide por este medio!' },

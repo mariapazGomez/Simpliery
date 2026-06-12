@@ -41,11 +41,11 @@ export function GlobalSearch({ onClose, go }: { onClose: () => void; go: (route:
     clientes
       .filter((c) => c.nombre.toLowerCase().includes(ql) || (c.telefono || '').includes(q) || (c.correo || '').toLowerCase().includes(ql))
       .slice(0, 4)
-      .forEach((c) => r.push({ type: 'Cliente', icon: 'clientes', label: c.nombre, sub: `${c.ciudad || ''} · ${c.telefono || ''}`, action: () => { go('clientes'); onClose() } }))
+      .forEach((c) => r.push({ type: 'Cliente', icon: 'clientes', label: c.nombre, sub: `${c.ciudad || ''} · ${c.telefono || ''}`, action: () => { go(`/clientes?cliente=${encodeURIComponent(c.nombre)}`); onClose() } }))
     sales
       .filter((s) => String(s.boleta).includes(q) || s.items.some((i) => i.name.toLowerCase().includes(ql)))
       .slice(0, 3)
-      .forEach((s) => r.push({ type: 'Venta', icon: 'receipt', label: `Boleta #${s.boleta}`, sub: `${fmtCLP(s.total)} · ${s.method} · ${s.date.toLocaleDateString('es-CL')}`, action: () => { go('ventas'); onClose() } }))
+      .forEach((s) => r.push({ type: 'Venta', icon: 'receipt', label: `Boleta #${s.boleta}`, sub: `${fmtCLP(s.total)} · ${s.method} · ${s.date.toLocaleDateString('es-CL')}`, action: () => { go('transacciones'); onClose() } }))
     return r
   }, [q, products, clientes, sales, go, onClose])
 

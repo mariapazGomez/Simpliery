@@ -17,7 +17,6 @@ interface Notif {
   title: string
   body: string
   action?: { label: string; to: string }
-  ts: Date
 }
 
 export function NotifDrawer({ open, onClose, go }: { open: boolean; onClose: () => void; go: (route: string) => void }) {
@@ -26,30 +25,31 @@ export function NotifDrawer({ open, onClose, go }: { open: boolean; onClose: () 
   const m = useMetrics()
   const fm = useFinMetrics()
 
+  // Alertas DERIVADAS del estado actual (no son eventos con hora; se recalculan al abrir).
   const notifs = useMemo<Notif[]>(() => {
     const list: Notif[] = []
     const sinStock = products.filter((p) => p.stock === 0)
     const stockBajo = products.filter((p) => p.stock > 0 && p.stock <= p.min)
-    if (sinStock.length) list.push({ id: 'n-sin', cat: 'inventario', tone: 'danger', icon: 'x', title: `${sinStock.length} productos sin stock`, body: sinStock.slice(0, 3).map((p) => p.name).join(', ') + (sinStock.length > 3 ? ` y ${sinStock.length - 3} más` : ''), action: { label: 'Ver inventario', to: 'inventario' }, ts: new Date(TODAY.getTime() - 1800000) })
-    if (stockBajo.length) list.push({ id: 'n-bajo', cat: 'inventario', tone: 'warn', icon: 'alert', title: `${stockBajo.length} productos con stock bajo`, body: stockBajo.slice(0, 2).map((p) => `${p.name} (${p.stock} u.)`).join(', '), action: { label: 'Reponer', to: 'inventario' }, ts: new Date(TODAY.getTime() - 3600000) })
+    if (sinStock.length) list.push({ id: 'n-sin', cat: 'inventario', tone: 'danger', icon: 'x', title: `${sinStock.length} productos sin stock`, body: sinStock.slice(0, 3).map((p) => p.name).join(', ') + (sinStock.length > 3 ? ` y ${sinStock.length - 3} más` : ''), action: { label: 'Ver inventario', to: 'inventario' } })
+    if (stockBajo.length) list.push({ id: 'n-bajo', cat: 'inventario', tone: 'warn', icon: 'alert', title: `${stockBajo.length} productos con stock bajo`, body: stockBajo.slice(0, 2).map((p) => `${p.name} (${p.stock} u.)`).join(', '), action: { label: 'Reponer', to: 'inventario' } })
 
     const withMetrics = clientes.map((c) => ({ ...c, ...clientMetrics(c) })) as (Cliente & ClientMetrics)[]
     const proxClientes = withMetrics.filter((c) => c.daysUntilNext != null && c.daysUntilNext >= 0 && c.daysUntilNext <= 3)
-    if (proxClientes.length) list.push({ id: 'n-prox', cat: 'clientes', tone: 'primary', icon: 'clientes', title: `${proxClientes.length} clientes listos para recomprar`, body: `${proxClientes.slice(0, 2).map((c) => c.nombre.split(' ')[0]).join(' y ')}${proxClientes.length > 2 ? ' y más' : ', entre otros'}. Buen momento para contactarlos.`, action: { label: 'Ver segmentos', to: 'segmentos' }, ts: new Date(TODAY.getTime() - 7200000) })
+    if (proxClientes.length) list.push({ id: 'n-prox', cat: 'clientes', tone: 'primary', icon: 'clientes', title: `${proxClientes.length} clientes listos para recomprar`, body: `${proxClientes.slice(0, 2).map((c) => c.nombre.split(' ')[0]).join(' y ')}${proxClientes.length > 2 ? ' y más' : ', entre otros'}. Buen momento para contactarlos.`, action: { label: 'Ver segmentos', to: 'segmentos' } })
     const enRiesgo = withMetrics.filter((c) => c.daysSinceLast != null && c.daysSinceLast > 45)
-    if (enRiesgo.length) list.push({ id: 'n-riesgo', cat: 'clientes', tone: 'warn', icon: 'bell', title: `${enRiesgo.length} clientes llevan más de 45 días sin comprar`, body: `${enRiesgo.slice(0, 2).map((c) => c.nombre.split(' ')[0]).join(', ')} podrían estar en riesgo de perderse.`, action: { label: 'Ver clientes', to: 'clientes' }, ts: new Date(TODAY.getTime() - 10800000) })
+    if (enRiesgo.length) list.push({ id: 'n-riesgo', cat: 'clientes', tone: 'warn', icon: 'bell', title: `${enRiesgo.length} clientes llevan más de 45 días sin comprar`, body: `${enRiesgo.slice(0, 2).map((c) => c.nombre.split(' ')[0]).join(', ')} podrían estar en riesgo de perderse.`, action: { label: 'Ver clientes', to: 'clientes' } })
 
     const catsBajoMargen = m.cats.filter((c) => c.marginPct < 25)
-    if (catsBajoMargen.length) list.push({ id: 'n-margen', cat: 'productos', tone: 'warn', icon: 'percent', title: `Margen bajo en ${catsBajoMargen[0].cat}`, body: `El margen de ${catsBajoMargen[0].cat} está en ${fmtPct(catsBajoMargen[0].marginPct)}, bajo el 25% recomendado.`, action: { label: 'Ver productos', to: 'productos' }, ts: new Date(TODAY.getTime() - 14400000) })
+    if (catsBajoMargen.length) list.push({ id: 'n-margen', cat: 'productos', tone: 'warn', icon: 'percent', title: `Margen bajo en ${catsBajoMargen[0].cat}`, body: `El margen de ${catsBajoMargen[0].cat} está en ${fmtPct(catsBajoMargen[0].marginPct)}, bajo el 25% recomendado.`, action: { label: 'Ver productos', to: 'productos' } })
 
-    if (fm.cajaProyectada < 400000) list.push({ id: 'n-caja', cat: 'finanzas', tone: 'danger', icon: 'wallet', title: 'Caja proyectada ajustada', body: `La caja estimada a fin de mes es ${fmtCLP(fm.cajaProyectada)}. Considera reducir gastos variables.`, action: { label: 'Ver finanzas', to: 'finanzas' }, ts: new Date(TODAY.getTime() - 5400000) })
+    if (fm.cajaProyectada < 400000) list.push({ id: 'n-caja', cat: 'finanzas', tone: 'danger', icon: 'wallet', title: 'Caja proyectada ajustada', body: `La caja estimada a fin de mes es ${fmtCLP(fm.cajaProyectada)}. Considera reducir gastos variables.`, action: { label: 'Ver finanzas', to: 'finanzas' } })
     const gastosPend = gastos.filter((g) => g.estado === 'pendiente')
-    if (gastosPend.length) list.push({ id: 'n-gastos', cat: 'finanzas', tone: 'warn', icon: 'tag', title: `${gastosPend.length} gastos pendientes de pago`, body: gastosPend.map((g) => g.desc).join(', ') + ' · ' + fmtCLP(gastosPend.reduce((a, g) => a + g.monto, 0)), action: { label: 'Ver gastos', to: 'finanzas' }, ts: new Date(TODAY.getTime() - 9000000) })
+    if (gastosPend.length) list.push({ id: 'n-gastos', cat: 'finanzas', tone: 'warn', icon: 'tag', title: `${gastosPend.length} gastos pendientes de pago`, body: gastosPend.map((g) => g.desc).join(', ') + ' · ' + fmtCLP(gastosPend.reduce((a, g) => a + g.monto, 0)), action: { label: 'Ver gastos', to: 'finanzas' } })
 
     const todaySales = sales.filter((s) => s.date.toDateString() === TODAY.toDateString())
-    if (todaySales.length > 0) list.push({ id: 'n-ventas', cat: 'ventas', tone: 'ok', icon: 'trendUp', title: `${todaySales.length} ventas registradas hoy`, body: `Total del día: ${fmtCLP(todaySales.reduce((a, s) => a + s.total, 0))} · Ganancia: ${fmtCLP(todaySales.reduce((a, s) => a + s.profit, 0))}`, action: { label: 'Ver ventas', to: 'dashboard' }, ts: new Date() })
+    if (todaySales.length > 0) list.push({ id: 'n-ventas', cat: 'ventas', tone: 'ok', icon: 'trendUp', title: `${todaySales.length} ventas registradas hoy`, body: `Total del día: ${fmtCLP(todaySales.reduce((a, s) => a + s.total, 0))} · Ganancia: ${fmtCLP(todaySales.reduce((a, s) => a + s.profit, 0))}`, action: { label: 'Ver ventas', to: 'dashboard' } })
 
-    return list.sort((a, b) => b.ts.getTime() - a.ts.getTime())
+    return list
   }, [products, sales, clientes, gastos, m, fm])
 
   const TONE_CFG: Record<Tone, { bg: string; fg: string; border: string }> = {
@@ -58,15 +58,6 @@ export function NotifDrawer({ open, onClose, go }: { open: boolean; onClose: () 
     primary: { bg: 'var(--primary-tint)', fg: 'var(--primary-700)', border: 'var(--primary-tint2)' },
     ok: { bg: 'var(--ok-tint)', fg: 'var(--primary-700)', border: 'var(--primary-tint2)' },
     info: { bg: 'var(--info-tint)', fg: 'var(--info)', border: 'var(--info-tint)' },
-  }
-
-  function tsLabel(ts: Date) {
-    const mins = Math.round((TODAY.getTime() - ts.getTime()) / 60000)
-    if (mins < 2) return 'Ahora'
-    if (mins < 60) return `Hace ${mins} min`
-    const hrs = Math.round(mins / 60)
-    if (hrs < 24) return `Hace ${hrs} h`
-    return ts.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' })
   }
 
   if (!open) return null
@@ -104,7 +95,6 @@ export function NotifDrawer({ open, onClose, go }: { open: boolean; onClose: () 
                     <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.3 }}>{n.title}</div>
                     <div style={{ fontSize: 12.5, color: 'var(--ink-2)', fontWeight: 600, marginTop: 3, lineHeight: 1.4 }}>{n.body}</div>
                   </div>
-                  <span style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}>{tsLabel(n.ts)}</span>
                 </div>
                 {n.action && (
                   <button onClick={() => { go(n.action!.to); onClose() }} className="btn btn-ghost" style={{ alignSelf: 'flex-start', padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: 'rgba(255,255,255,0.8)' }}>
@@ -116,7 +106,7 @@ export function NotifDrawer({ open, onClose, go }: { open: boolean; onClose: () 
           })}
         </div>
         <div style={{ padding: '13px 20px', borderTop: '1px solid var(--line)', fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, textAlign: 'center', flexShrink: 0 }}>
-          Las alertas se actualizan en tiempo real según tus datos
+          Las alertas se calculan al instante según tus datos
         </div>
       </div>
     </>

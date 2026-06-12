@@ -36,7 +36,10 @@ function Slider({ label, value, onChange, min, max, step = 1, fmt }: { label: st
   )
 }
 
-const MES_LABELS = ['Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Ene', 'Feb', 'Mar', 'Abr', 'May']
+// Próximos 12 meses desde hoy (el acumulado parte el mes siguiente).
+const MES_LABELS = Array.from({ length: 12 }, (_, i) =>
+  new Date(TODAY.getFullYear(), TODAY.getMonth() + i + 1, 1).toLocaleDateString('es-CL', { month: 'short' }),
+)
 
 export default function CrecimientoPage() {
   const { clientes, settings } = useStore()
