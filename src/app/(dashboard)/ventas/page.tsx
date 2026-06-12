@@ -503,10 +503,13 @@ export default function VentasPage() {
     }
   }
 
+  // Unidades base de un producto ya comprometidas en el carrito, contando TODAS
+  // sus líneas (simple, variantes y granel). Es el tope anti-sobreventa: vender
+  // más de lo que hay rompe la reversibilidad al anular (stock fantasma).
+  const baseEnCarro = (id: number) => cart.filter((i) => i.productId === id).reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
+
   const add = (p: ProductWithKg) => {
-    // No permitir vender más de lo que hay en stock (evita descuadres al anular).
-    const enCarro = cart.filter((i) => i.productId === p.id && !i.formatId).reduce((a, i) => a + i.qty, 0)
-    if (enCarro >= p.stock) {
+    if (baseEnCarro(p.id) + 1 > p.stock) {
       toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock}`)
       return
     }
@@ -519,7 +522,11 @@ export default function VentasPage() {
       return [...c, { productId: p.id, name: p.name, cat: p.cat, price, originalPrice: price, basePrice: localP, despachoPrice: despP, cost: p.cost, qty: 1 }]
     })
   }
-  const addFormat = (p: ProductWithKg, fmt: Format, qty: number) =>
+  const addFormat = (p: ProductWithKg, fmt: Format, qty: number) => {
+    if (baseEnCarro(p.id) + fmt.qty * qty > p.stock) {
+      toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock} ${UNIT_IS_WEIGHT(p.unit) ? p.unit : 'u.'}`)
+      return
+    }
     setCart((c) => {
       const cartName = `${p.name} — ${fmt.name}`
       const e = c.find((i) => i.productId === p.id && i.formatId === fmt.id)
@@ -530,10 +537,10 @@ export default function VentasPage() {
       const price = tipo === 'despacho' ? despP : localP
       return [...c, { productId: p.id, name: cartName, baseName: p.name, displayFormat: fmt.name, cat: p.cat, price, originalPrice: price, basePrice: localP, despachoPrice: despP, cost: itemCost, qty, formatId: fmt.id, baseUnitsPerItem: fmt.qty, unit: p.unit }]
     })
+  }
   // Venta a granel: cantidad arbitraria (kg) con precio por tramo. Descuenta stock fraccionado.
   const addGranel = (p: ProductWithKg, amountBase: number, localPrice: number, label: string) => {
-    const enCarro = cart.filter((i) => i.productId === p.id).reduce((a, i) => a + (i.baseUnitsPerItem ?? 1) * i.qty, 0)
-    if (enCarro + amountBase > p.stock) {
+    if (baseEnCarro(p.id) + amountBase > p.stock) {
       toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock} ${p.unit}`)
       return
     }
@@ -553,15 +560,27 @@ export default function VentasPage() {
       }),
     )
   }
-  const setQty = (id: number, fmt: string, d: number) => setCart((c) => c.map((i) => (i.productId === id && i.formatId === fmt ? { ...i, qty: Math.max(1, i.qty + d) } : i)))
-  const setQtySimple = (id: number, d: number) =>
-    setCart((c) =>
-      c.map((i) => {
-        if (i.productId !== id || i.formatId) return i
-        const max = products.find((x) => x.id === id)?.stock ?? Infinity
-        return { ...i, qty: Math.max(1, Math.min(max, i.qty + d)) }
-      }),
-    )
+  const setQty = (id: number, fmt: string, d: number) => {
+    if (d > 0) {
+      const p = products.find((x) => x.id === id)
+      const line = cart.find((i) => i.productId === id && i.formatId === fmt)
+      if (p && line && baseEnCarro(id) + d * (line.baseUnitsPerItem || 1) > p.stock) {
+        toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock} ${UNIT_IS_WEIGHT(p.unit) ? p.unit : 'u.'}`)
+        return
+      }
+    }
+    setCart((c) => c.map((i) => (i.productId === id && i.formatId === fmt ? { ...i, qty: Math.max(1, i.qty + d) } : i)))
+  }
+  const setQtySimple = (id: number, d: number) => {
+    if (d > 0) {
+      const p = products.find((x) => x.id === id)
+      if (p && baseEnCarro(id) + d > p.stock) {
+        toast(`Sin stock suficiente de ${p.name} · quedan ${p.stock}`)
+        return
+      }
+    }
+    setCart((c) => c.map((i) => (i.productId === id && !i.formatId ? { ...i, qty: Math.max(1, i.qty + d) } : i)))
+  }
   const setItemPrice = (id: number, fid: string | undefined, newPrice: number) => setCart((c) => c.map((i) => (i.productId === id && (i.formatId || null) === (fid || null) ? { ...i, price: Math.max(0, +newPrice || 0) } : i)))
   // Quita SOLO la línea exacta (producto + formato); antes borraba también las
   // variantes hermanas del mismo producto.
