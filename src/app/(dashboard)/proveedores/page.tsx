@@ -21,9 +21,7 @@ interface Proveedor {
   ultimoPedido: Date
 }
 
-const PROV_CATS = ['Aceitunas', 'Embutidos', 'Frutos secos', 'Huevos', 'Mantequillas', 'Mermeladas', 'Queso de cabra', 'Quesos', 'General']
-
-function ProveedorModal({ initial, onSave, onClose }: { initial?: Proveedor; onSave: (p: Proveedor) => void; onClose: () => void }) {
+function ProveedorModal({ initial, cats, onSave, onClose }: { initial?: Proveedor; cats: string[]; onSave: (p: Proveedor) => void; onClose: () => void }) {
   const [f, setF] = useState<Omit<Proveedor, 'id' | 'pedidos' | 'ultimoPedido'>>(
     initial || { nombre: '', contacto: '', telefono: '', correo: '', categorias: [], condicion: 'Contado', notas: '', activo: true },
   )
@@ -71,9 +69,9 @@ function ProveedorModal({ initial, onSave, onClose }: { initial?: Proveedor; onS
             <input className="input" value={f.correo} onChange={(e) => set('correo', e.target.value)} placeholder="correo@mail.com" />
           </Field>
         </div>
-        <Field label="Categorías que provee">
+        <Field label="Categorías que provee" hint="Tus categorías reales — así te avisamos qué reponer con cada proveedor.">
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 4 }}>
-            {PROV_CATS.map((c) => (
+            {cats.map((c) => (
               <button key={c} onClick={() => toggleCat(c)} className="chip" style={{ cursor: 'pointer', border: '1px solid ' + (f.categorias.includes(c) ? 'var(--primary)' : 'var(--line)'), background: f.categorias.includes(c) ? 'var(--primary-tint)' : 'var(--surface)', color: f.categorias.includes(c) ? 'var(--primary-700)' : 'var(--ink-2)', padding: '5px 11px', fontFamily: 'inherit' }}>
                 {c}
               </button>
@@ -107,10 +105,17 @@ function ProveedorModal({ initial, onSave, onClose }: { initial?: Proveedor; onS
 }
 
 export default function ProveedoresPage() {
-  const { toast, products, negocioId } = useStore()
+  const { toast, products, negocioId, categorias } = useStore()
   const [proveedores, setProveedores] = useCloudCollection<Proveedor>('proveedores', negocioId)
   const addProv = (p: Proveedor) => setProveedores((ps) => [...ps, p])
   const updateProv = (id: string, p: Partial<Proveedor>) => setProveedores((ps) => ps.map((x) => (x.id === id ? { ...x, ...p } : x)))
+  const deleteProv = (pv: Proveedor) => {
+    if (!window.confirm(`¿Eliminar al proveedor "${pv.nombre}"? Esta acción no se puede deshacer.`)) return
+    setProveedores((ps) => ps.filter((x) => x.id !== pv.id))
+    toast('Proveedor eliminado')
+  }
+  // Categorías REALES del negocio (las que usan los productos y las definidas), + General.
+  const provCats = [...new Set([...categorias, ...products.map((p) => p.cat), 'General'])]
   const [form, setForm] = useState(false)
   const [edit, setEdit] = useState<Proveedor | null>(null)
   const [q, setQ] = useState('')
@@ -161,6 +166,9 @@ export default function ProveedoresPage() {
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="btn btn-ghost btn-icon" style={{ width: 30, height: 30 }} onClick={() => setEdit(pv)}>
                     <Icon name="edit" size={14} />
+                  </button>
+                  <button className="btn btn-ghost btn-icon" style={{ width: 30, height: 30, color: 'var(--danger)' }} title="Eliminar" onClick={() => deleteProv(pv)}>
+                    <Icon name="trash" size={14} />
                   </button>
                   {!pv.activo && (
                     <span className="chip chip-neutral" style={{ fontSize: 11 }}>
@@ -242,8 +250,8 @@ export default function ProveedoresPage() {
         )}
       </div>
 
-      {form && <ProveedorModal onSave={addProv} onClose={() => setForm(false)} />}
-      {edit && <ProveedorModal initial={edit} onSave={(p) => updateProv(edit.id, p)} onClose={() => setEdit(null)} />}
+      {form && <ProveedorModal cats={provCats} onSave={addProv} onClose={() => setForm(false)} />}
+      {edit && <ProveedorModal initial={edit} cats={[...new Set([...provCats, ...edit.categorias])]} onSave={(p) => updateProv(edit.id, p)} onClose={() => setEdit(null)} />}
     </div>
   )
 }

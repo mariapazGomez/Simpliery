@@ -25,7 +25,12 @@ export default function LoginPage() {
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [err, setErr] = useState<string | null>(null)
+  // Si Google OAuth falló, el callback vuelve con ?error=google — mostramos el aviso.
+  const [err, setErr] = useState<string | null>(() =>
+    typeof window !== 'undefined' && window.location.search.includes('error=google')
+      ? 'No se pudo iniciar sesión con Google. Inténtalo de nuevo o entra con tu correo.'
+      : null,
+  )
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -45,7 +50,7 @@ export default function LoginPage() {
         if (error) throw error
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) {
-          setMsg('Cuenta creada. Revisa tu correo para confirmarla (o desactiva la confirmación en Supabase para entrar al toque).')
+          setMsg('Cuenta creada. Te enviamos un correo: confírmalo y luego inicia sesión aquí.')
           setMode('login')
           return
         }

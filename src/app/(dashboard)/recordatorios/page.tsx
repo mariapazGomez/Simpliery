@@ -64,6 +64,9 @@ function ReminderCard({
   const t = REMINDER_TYPES[r.type] || REMINDER_TYPES.tarea
   const isOverdue = r.status !== 'completado' && r.due < new Date()
   const isDone = r.status === 'completado'
+  // Recordatorio automático (derivado de datos, ej. deuda): se resuelve actuando
+  // sobre el dato real, no marcándolo "listo" — solo ofrece el botón "Ver".
+  const isAuto = r.id.startsWith('auto_')
   const daysLeft = Math.ceil((r.due.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
 
   return (
@@ -101,8 +104,12 @@ function ReminderCard({
         {!isDone && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
             {r.link && <button className="btn btn-soft" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => go(r.link!.screen)}><Icon name="chevR" size={13} />Ver</button>}
-            <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => onComplete(r.id)}><Icon name="check" size={13} />Listo</button>
-            <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => onPostpone(r.id)}>Posponer</button>
+            {!isAuto && (
+              <>
+                <button className="btn btn-primary" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => onComplete(r.id)}><Icon name="check" size={13} />Listo</button>
+                <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: 12.5 }} onClick={() => onPostpone(r.id)}>Posponer</button>
+              </>
+            )}
           </div>
         )}
         {isDone && <button className="btn btn-ghost btn-icon" style={{ width: 30, height: 30 }} onClick={() => onDelete(r.id)}><Icon name="trash" size={14} /></button>}
@@ -171,7 +178,7 @@ export default function RecordatoriosPage() {
 
   const filtered = useMemo(() => {
     let list = allReminders
-    if (filter === 'pendientes') list = list.filter((r) => r.status === 'pendiente' || r.status === 'en_proceso')
+    if (filter === 'pendientes') list = list.filter((r) => r.status === 'pendiente' || r.status === 'en_proceso' || r.status === 'pospuesto')
     else if (filter === 'vencidos') list = list.filter((r) => r.status !== 'completado' && r.due < new Date())
     else if (filter === 'hoy') list = list.filter((r) => r.status !== 'completado' && r.due.toDateString() === new Date().toDateString())
     else if (filter === 'completados') list = list.filter((r) => r.status === 'completado')
@@ -187,7 +194,7 @@ export default function RecordatoriosPage() {
   const remove = (id: string) => setReminders((rs) => rs.filter((r) => r.id !== id))
 
   const counts: Record<string, number> = {
-    pendientes: allReminders.filter((r) => r.status === 'pendiente' || r.status === 'en_proceso').length,
+    pendientes: allReminders.filter((r) => r.status === 'pendiente' || r.status === 'en_proceso' || r.status === 'pospuesto').length,
     vencidos: allReminders.filter((r) => r.status !== 'completado' && r.due < new Date()).length,
     hoy: allReminders.filter((r) => r.status !== 'completado' && r.due.toDateString() === new Date().toDateString()).length,
     completados: allReminders.filter((r) => r.status === 'completado').length,
