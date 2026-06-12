@@ -261,12 +261,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const simpleDeduct = simpleIt ? simpleIt.qty : 0
           const fmtDeduct = fmtItems.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
           const totalDeduct = simpleDeduct + fmtDeduct
-          const totalSold = simpleDeduct + fmtItems.reduce((a, i) => a + i.qty, 0)
-          return { ...p, stock: Math.max(0, p.stock - totalDeduct), sold: p.sold + totalSold }
+          // `sold` se lleva en UNIDADES BASE (lo mismo que descuenta el stock):
+          // así "Inicial = stock + vendido" no cambia al vender variantes o granel.
+          return { ...p, stock: Math.max(0, p.stock - totalDeduct), sold: p.sold + totalDeduct }
         }),
       )
       setMovements((m) => [
-        { id: 'mv' + boleta, date: new Date(), product: items.length > 1 ? `${items.length} productos` : items[0].name, type: 'Venta', qty: -items.reduce((a, i) => a + i.qty, 0), note: 'Boleta ' + boleta },
+        { id: 'mv' + boleta, date: new Date(), product: items.length > 1 ? `${items.length} productos` : items[0].name, type: 'Venta', qty: -items.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0), note: 'Boleta ' + boleta },
         ...m,
       ])
       toast('Venta registrada · ' + fmtCLP(total))
@@ -286,12 +287,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!simpleIt && !fmtItems.length) return p
         const simpleAdd = simpleIt ? simpleIt.qty : 0
         const fmtAdd = fmtItems.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
-        const soldBack = simpleAdd + fmtItems.reduce((a, i) => a + i.qty, 0)
-        return { ...p, stock: p.stock + simpleAdd + fmtAdd, sold: Math.max(0, p.sold - soldBack) }
+        // Espejo exacto de registrarVenta: repone stock y `sold` en unidades base.
+        return { ...p, stock: p.stock + simpleAdd + fmtAdd, sold: Math.max(0, p.sold - (simpleAdd + fmtAdd)) }
       }),
     )
     setMovements((mv) => [
-      { id: 'mv' + Date.now(), date: new Date(), product: sale.items.length > 1 ? `${sale.items.length} productos` : sale.items[0]?.name ?? '', type: 'Ajuste', qty: sale.items.reduce((a, i) => a + i.qty, 0), note: 'Anulación boleta ' + sale.boleta },
+      { id: 'mv' + Date.now(), date: new Date(), product: sale.items.length > 1 ? `${sale.items.length} productos` : sale.items[0]?.name ?? '', type: 'Ajuste', qty: sale.items.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0), note: 'Anulación boleta ' + sale.boleta },
       ...mv,
     ])
     setSales((ss) => ss.filter((s) => s.id !== saleId))
