@@ -50,10 +50,10 @@ describe('despachoToPedido — lo que viaja a OptiRoute', () => {
     expect(info).toContain('Pago: Transferencia')
   })
 
-  it('demand_a = bultos (suma de cantidades) y custom_fields con boleta/total/método', () => {
+  it('demand_a = bultos (suma de cantidades) y NUNCA custom_fields (la API lo rechaza: espera lista, no dict)', () => {
     const ped = despachoToPedido(mkDespacho())
     expect(ped.customer.demand_a).toBe(3)
-    expect(ped.custom_fields).toEqual({ boleta: 46224, total: 18500, metodo: 'Transferencia' })
+    expect(ped).not.toHaveProperty('custom_fields')
   })
 
   it('omite los campos opcionales vacíos (correo/depto/teléfono) en vez de mandar ""', () => {

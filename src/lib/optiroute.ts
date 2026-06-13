@@ -2,12 +2,15 @@
 import { fmtCLP } from '@/lib/format'
 import type { Despacho, EstadoDespacho } from '@/types'
 
-/** "Pedido de entrada" de OptiRoute construido desde un Despacho. */
+/** "Pedido de entrada" de OptiRoute construido desde un Despacho.
+ *  OJO: NO enviar `custom_fields` — el manual lo describe como "objeto", pero la
+ *  API real lo rechaza con 400 «Se esperaba una lista de elementos en vez del
+ *  tipo "dict"» (verificado en producción, 12-06-2026). El detalle del pedido
+ *  viaja completo en `address_more_info`. */
 export interface PedidoOptiRoute {
   reference: string
   customer: { name: string; phone_number?: string; email?: string; demand_a?: number }
   address: { address_string: string; commune_string?: string; apartment_number?: string; address_more_info?: string }
-  custom_fields?: Record<string, string | number>
 }
 
 /** Mapea un Despacho al objeto que espera la API de pedidos de OptiRoute.
@@ -33,7 +36,6 @@ export function despachoToPedido(d: Despacho): PedidoOptiRoute {
       ...(d.depto ? { apartment_number: d.depto } : {}),
       address_more_info: masInfo,
     },
-    custom_fields: { boleta: d.boleta, total: d.total, metodo: d.method },
   }
 }
 

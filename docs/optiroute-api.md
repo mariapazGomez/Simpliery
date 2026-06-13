@@ -41,7 +41,7 @@ Endpoint base: `https://app.optiroute.cl/api/v1/integration-service-requests/`
 - `skills` (lista de Objeto habilidad) — opcional (asigna a vehículos con esa habilidad)
 - `created_at` (texto `%Y-%m-%dT%H:%M:%S%z`) — opcional (si falta, usa la fecha actual)
 - `delivery_data` (texto `%Y-%m-%dT%H:%M:%S%z`) — opcional (fecha de entrega)
-- `custom_fields` (objeto) — opcional
+- `custom_fields` — **NO USAR como objeto**: el manual dice "objeto", pero la API real responde 400 `{"custom_fields":{"non_field_errors":["Se esperaba una lista de elementos en vez del tipo \"dict\"."]}}` (verificado en producción 12-06-2026; probablemente exige una lista con custom fields predefinidos en la cuenta). Control Local NO lo envía — el detalle del pedido va en `address_more_info`.
 - `configured_delivery_time` (`[DD] [HH:[MM:]]ss[.uuuuuu]`; entero = segundos) — opcional
 
 #### Objeto cliente
