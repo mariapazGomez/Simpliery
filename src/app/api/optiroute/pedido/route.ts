@@ -49,6 +49,8 @@ export async function POST(request: Request) {
 }
 
 // GET ?check=1 → prueba la conexión: ¿el token de Vercel existe y OptiRoute lo acepta?
+// GET ?raw=1  → diagnóstico: vuelca el JSON crudo de los últimos pedidos (para ver
+//               el formato EXACTO de custom_fields y sus nombres/ids en tu cuenta).
 // GET ?id=…   → consulta el estado actual de un pedido en OptiRoute
 export async function GET(request: Request) {
   const auth = authHeader()
@@ -63,6 +65,19 @@ export async function GET(request: Request) {
       return NextResponse.json({ conectado: false, motivo: `OptiRoute rechazó el token (HTTP ${res.status}): ${JSON.stringify(data).slice(0, 200)}` })
     } catch {
       return NextResponse.json({ conectado: false, motivo: 'No se pudo conectar con OptiRoute (¿sin internet o servicio caído?).' })
+    }
+  }
+
+  // Diagnóstico de solo lectura: devuelve los últimos pedidos tal cual los guarda
+  // OptiRoute, para leer la estructura real de `custom_fields` (nombres/ids/valores).
+  if (params.get('raw')) {
+    if (!auth) return NextResponse.json({ error: 'OptiRoute no está conectado' }, { status: 400 })
+    try {
+      const res = await fetch(`${BASE}/integration-service-requests/?per_page=3`, { headers: { Authorization: auth } })
+      const data = await res.json().catch(() => ({}))
+      return NextResponse.json({ ok: res.ok, status: res.status, data })
+    } catch {
+      return NextResponse.json({ error: 'No se pudo conectar con OptiRoute' }, { status: 502 })
     }
   }
 
