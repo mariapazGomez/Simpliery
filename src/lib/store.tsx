@@ -381,6 +381,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!prev) return
     const merged: Sale = { ...prev, ...patch }
     setSales((ss) => ss.map((s) => (s.id === saleId ? merged : s)))
+    // Si cambian los PRODUCTOS de la boleta, reconcilia el stock: repone las
+    // unidades base de los items viejos y descuenta las de los nuevos (mismos
+    // helpers de venta/anulación, simétricos y testeados) + deja un movimiento.
+    if (patch.items) {
+      setProducts((ps) => ps.map((p) => aplicarVentaAProducto(revertirVentaDeProducto(p, prev.items), merged.items)))
+      const deltaBase = unidadesBaseDeItems(merged.items) - unidadesBaseDeItems(prev.items)
+      if (deltaBase !== 0) {
+        setMovements((m) => [
+          { id: 'mv' + Date.now(), date: new Date(), product: merged.items.length > 1 ? `${merged.items.length} productos` : merged.items[0]?.name ?? '', type: 'Ajuste', qty: -deltaBase, note: 'Edición boleta ' + merged.boleta },
+          ...m,
+        ])
+      }
+    }
     // Mantiene sincronizada la compra dentro de la ficha del cliente.
     setClientes((cs) =>
       cs.map((c) =>
@@ -404,7 +417,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } else {
       toast('Transacción actualizada')
     }
-  }, [sales, despachos, setSales, setClientes, setDespachos, toast])
+  }, [sales, despachos, setSales, setClientes, setDespachos, setProducts, setMovements, toast])
 
   const addDespacho = useCallback((d: Despacho) => {
     setDespachos((ds) => [d, ...ds])

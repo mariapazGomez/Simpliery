@@ -2,12 +2,13 @@
 
 // ---------- Transacciones: historial de ventas con detalle completo ----------
 import { useMemo, useState } from 'react'
-import { useStore } from '@/lib/store'
+import { useStore, unidadesBaseDeItems } from '@/lib/store'
+import { useFormats } from '@/lib/formats-store'
 import { useGo } from '@/lib/nav'
-import { fmtCLP } from '@/lib/format'
+import { fmtCLP, precioDespachoDe, precioFormatoCanal, formatoEnCanal } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, SearchBox, CatDot, Field } from '@/components/ui'
-import type { Sale, ClienteRef } from '@/types'
+import type { Sale, SaleItem, ClienteRef, Product, Format } from '@/types'
 
 type Filtro = 'todas' | 'local' | 'despacho' | 'credito'
 
@@ -283,11 +284,86 @@ function DetalleModal({ venta, onClose, onEditar }: { venta: Sale; onClose: () =
 }
 
 /* ---------- Editar una transacción (datos seguros, sin tocar stock) ---------- */
+/* Línea de la boleta en edición + helpers para steppers/precio */
+const esGranelItem = (i: SaleItem) => (i.formatId || '').startsWith('granel:')
+
+/* Picker para agregar una línea a una boleta: producto y, si tiene, su variante/caja. */
+function AgregarLineaProducto({ tipo, onAdd, onCancel, cabeBase }: {
+  tipo: 'local' | 'despacho'
+  onAdd: (it: SaleItem) => void
+  onCancel: () => void
+  cabeBase: (productId: number, deltaBase: number) => boolean
+}) {
+  const { products } = useStore()
+  const { getFormats } = useFormats()
+  const [q, setQ] = useState('')
+  const [sel, setSel] = useState<number | null>(null)
+  const lista = products.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 8)
+  const selProd = sel != null ? products.find((p) => p.id === sel) : null
+  const fmtsDe = (p: Product) => getFormats(p.id).filter((f) => formatoEnCanal(f.canal, tipo))
+  const precioLocalDespacho = (p: Product) => (tipo === 'despacho' ? precioDespachoDe(p.price, p.precioDespacho) : p.price)
+
+  const addSimple = (p: Product) => {
+    if (!cabeBase(p.id, 1)) return
+    onAdd({ productId: p.id, name: p.name, cat: p.cat, qty: 1, price: precioLocalDespacho(p), cost: p.cost })
+  }
+  const addVariante = (p: Product, f: Format) => {
+    if (!cabeBase(p.id, f.qty)) return
+    onAdd({ productId: p.id, name: `${p.name} — ${f.name}`, cat: p.cat, qty: 1, price: precioFormatoCanal(f, tipo), cost: p.cost * f.qty, formatId: f.id, baseUnitsPerItem: f.qty })
+  }
+
+  return (
+    <div style={{ padding: 12, background: 'var(--surface-3)', borderRadius: 11, border: '1px dashed var(--primary)', display: 'grid', gap: 10 }}>
+      {!selProd ? (
+        <>
+          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto…" autoFocus />
+          <div style={{ display: 'grid', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
+            {lista.map((p) => {
+              const tieneFmts = fmtsDe(p).length > 0
+              const sinStock = p.stock <= 0 && !tieneFmts
+              return (
+                <button key={p.id} className="btn btn-ghost" style={{ justifyContent: 'space-between', fontSize: 13.5, opacity: sinStock ? 0.5 : 1 }} disabled={sinStock} onClick={() => (tieneFmts ? setSel(p.id) : addSimple(p))}>
+                  <span style={{ fontWeight: 700 }}>{p.name}</span>
+                  <span style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>{tieneFmts ? 'elegir formato ›' : `${p.stock} u · ${fmtCLP(precioLocalDespacho(p))}`}</span>
+                </button>
+              )
+            })}
+            {lista.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, padding: 6 }}>Sin productos que coincidan.</div>}
+          </div>
+          <button className="btn btn-ghost" style={{ fontSize: 13, alignSelf: 'flex-start' }} onClick={onCancel}>Cancelar</button>
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} onClick={() => setSel(null)}><Icon name="chevR" size={14} style={{ transform: 'rotate(180deg)' }} /></button>
+            <span style={{ fontWeight: 800, fontSize: 14, flex: 1 }}>{selProd.name}</span>
+          </div>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <button className="btn btn-ghost" style={{ justifyContent: 'space-between', fontSize: 13.5 }} disabled={!cabeBase(selProd.id, 1)} onClick={() => addSimple(selProd)}>
+              <span style={{ fontWeight: 700 }}>1 unidad</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>{cabeBase(selProd.id, 1) ? fmtCLP(precioLocalDespacho(selProd)) : 'sin stock'}</span>
+            </button>
+            {fmtsDe(selProd).map((f) => (
+              <button key={f.id} className="btn btn-ghost" style={{ justifyContent: 'space-between', fontSize: 13.5 }} disabled={!cabeBase(selProd.id, f.qty)} onClick={() => addVariante(selProd, f)}>
+                <span style={{ fontWeight: 700 }}>{f.name} <span style={{ color: 'var(--ink-3)', fontWeight: 600 }}>({f.qty} u)</span></span>
+                <span style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>{cabeBase(selProd.id, f.qty) ? fmtCLP(precioFormatoCanal(f, tipo)) : 'sin stock'}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
-  const { updateSale, settings, toast } = useStore()
+  const { updateSale, settings, toast, products, despachos } = useStore()
+  const { getFormats } = useFormats()
   const cl = venta.cliente
   const [tipo, setTipo] = useState<'local' | 'despacho'>(venta.tipo || 'local')
   const [method, setMethod] = useState(venta.method)
+  const [items, setItems] = useState<SaleItem[]>(venta.items)
+  const [agregando, setAgregando] = useState(false)
   const [conCliente, setConCliente] = useState(!!cl)
   const [nombre, setNombre] = useState(cl?.nombre || '')
   const [telefono, setTelefono] = useState(cl?.telefono || cl?.numero || '')
@@ -298,12 +374,52 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
 
   const metodos = [...new Set([...settings.methods, venta.method])]
 
+  // Candado "antes de salir a ruta": si el despacho ya va en camino, llegó o fue
+  // enviado a OptiRoute, NO se pueden cambiar los productos ni el tipo (la
+  // mercadería ya salió). Los datos de contacto/pago sí se pueden corregir.
+  const desp = despachos.find((d) => d.saleId === venta.id)
+  const bloqueado = !!desp && (desp.estado === 'en_ruta' || desp.estado === 'entregado' || !!desp.optirouteId)
+
+  // Tope de stock: lo disponible para esta boleta = stock actual del producto +
+  // lo que esta misma boleta ya tenía reservado (se repondrá al guardar).
+  const presupuestoBase = (productId: number) => {
+    const prod = products.find((p) => p.id === productId)
+    if (!prod) return 0
+    return prod.stock + unidadesBaseDeItems(venta.items.filter((i) => i.productId === productId))
+  }
+  const cabeBase = (productId: number, deltaBase: number) =>
+    unidadesBaseDeItems(items.filter((i) => i.productId === productId)) + deltaBase <= presupuestoBase(productId) + 1e-9
+
+  const setQty = (idx: number, nueva: number) => {
+    setItems((its) => its.map((it, i) => (i === idx ? { ...it, qty: Math.max(1, nueva) } : it)))
+  }
+  const incQty = (idx: number) => {
+    const it = items[idx]
+    const b = it.baseUnitsPerItem || 1
+    if (!cabeBase(it.productId, b)) { toast('No hay stock para sumar otra unidad', 'alert'); return }
+    setQty(idx, it.qty + 1)
+  }
+  const quitar = (idx: number) => setItems((its) => its.filter((_, i) => i !== idx))
+  const agregarItem = (it: SaleItem) => { setItems((its) => [...its, it]); setAgregando(false) }
+
+  const bruto = items.reduce((a, i) => a + i.price * i.qty, 0)
+  const costo = items.reduce((a, i) => a + i.cost * i.qty, 0)
+  // Conserva el descuento original (recalcula el monto sobre el nuevo bruto).
+  const desc = venta.descuento
+    ? venta.descuento.type === 'pct'
+      ? Math.round((bruto * venta.descuento.value) / 100)
+      : Math.min(venta.descuento.value, bruto)
+    : 0
+  const total = bruto - desc
+
   // Para despacho, OptiRoute necesita nombre + dirección + comuna + teléfono.
   const despachoListo = nombre.trim() && direccion.trim() && ciudad.trim() && telefono.trim()
   const faltaDespacho = tipo === 'despacho' && (!conCliente || !despachoListo)
+  const sinItems = items.length === 0
 
   const guardar = () => {
     if (faltaDespacho) { toast('Para un despacho faltan datos: nombre, dirección, comuna y teléfono.', 'alert'); return }
+    if (sinItems) { toast('La boleta debe tener al menos un producto.', 'alert'); return }
     const cliente: ClienteRef | null =
       conCliente && nombre.trim()
         ? {
@@ -322,13 +438,16 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
     // Si el método cambió, el pago dividido anterior ya no aplica.
     const esCredito = method === 'Crédito'
     const totalPagado = (venta.pagos || []).reduce((a, p) => a + p.monto, 0)
+    const itemsCambiaron = JSON.stringify(items) !== JSON.stringify(venta.items)
     updateSale(venta.id, {
       tipo,
       method,
       cliente,
+      // Solo manda items/total si de verdad cambiaron (así no se reconcilia stock de más).
+      ...(itemsCambiaron ? { items, total, cost: costo, profit: total - costo, descuento: desc > 0 ? { type: venta.descuento!.type, value: venta.descuento!.value, amount: desc } : null } : {}),
       credito: esCredito,
-      pagado: esCredito ? totalPagado >= venta.total : true,
-      montoPendiente: esCredito ? Math.max(0, venta.total - totalPagado) : 0,
+      pagado: esCredito ? totalPagado >= total : true,
+      montoPendiente: esCredito ? Math.max(0, total - totalPagado) : 0,
       ...(method !== venta.method ? { pagoMixto: null } : {}),
     })
     onClose()
@@ -337,20 +456,67 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
   return (
     <Modal
       title={`Editar boleta N° ${venta.boleta}`}
-      sub="Corrige el tipo, el pago y los datos del cliente de esta venta."
+      sub="Edita productos, tipo, pago y datos del cliente de esta venta."
       onClose={onClose}
-      width={520}
+      width={560}
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={guardar} disabled={faltaDespacho}><Icon name="check" size={16} />Guardar</button>
+          <button className="btn btn-primary" onClick={guardar} disabled={faltaDespacho || sinItems}><Icon name="check" size={16} />Guardar</button>
         </>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {bloqueado && (
+          <div style={{ fontSize: 12.5, color: 'oklch(0.50 0.10 70)', fontWeight: 700, lineHeight: 1.5, background: 'var(--warn-tint)', borderRadius: 10, padding: '10px 12px' }}>
+            <Icon name="truck" size={13} /> Este despacho ya {desp?.estado === 'entregado' ? 'fue entregado' : desp?.optirouteId ? 'fue enviado a OptiRoute' : 'salió a ruta'}: no puedes cambiar los productos ni el tipo. Sí puedes corregir el pago y los datos de contacto.
+          </div>
+        )}
+
+        {/* ── Productos de la boleta ── */}
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink-2)', flex: 1 }}>Productos</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-3)' }}>{items.length} línea{items.length !== 1 ? 's' : ''}</span>
+          </div>
+          {items.map((it, idx) => {
+            const granel = esGranelItem(it)
+            return (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--surface-3)', borderRadius: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>{fmtCLP(it.price)} c/u · {fmtCLP(it.price * it.qty)}</div>
+                </div>
+                {!granel && !bloqueado ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} onClick={() => (it.qty <= 1 ? quitar(idx) : setQty(idx, it.qty - 1))}><Icon name={it.qty <= 1 ? 'trash' : 'minus'} size={13} /></button>
+                    <span className="tnum" style={{ minWidth: 26, textAlign: 'center', fontWeight: 800, fontSize: 14 }}>{it.qty}</span>
+                    <button className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} onClick={() => incQty(idx)}><Icon name="plus" size={13} /></button>
+                  </div>
+                ) : (
+                  <span className="tnum" style={{ fontWeight: 800, fontSize: 14 }}>×{it.qty}</span>
+                )}
+                {!bloqueado && <button className="btn btn-ghost btn-icon" style={{ width: 28, height: 28, color: 'var(--danger)' }} onClick={() => quitar(idx)}><Icon name="trash" size={13} /></button>}
+              </div>
+            )
+          })}
+          {sinItems && <div style={{ fontSize: 12.5, color: 'var(--danger)', fontWeight: 700 }}>La boleta quedó sin productos. Agrega al menos uno.</div>}
+
+          {!bloqueado && (agregando ? (
+            <AgregarLineaProducto tipo={tipo} onAdd={agregarItem} onCancel={() => setAgregando(false)} cabeBase={cabeBase} />
+          ) : (
+            <button className="btn btn-soft" style={{ fontSize: 13.5, alignSelf: 'flex-start' }} onClick={() => setAgregando(true)}><Icon name="plus" size={15} />Agregar producto</button>
+          ))}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 2px 0', borderTop: '1px solid var(--line)', marginTop: 2 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-3)' }}>{desc > 0 ? `Total (con descuento ${fmtCLP(desc)})` : 'Total'}</span>
+            <span className="tnum" style={{ fontWeight: 800, fontSize: 16 }}>{fmtCLP(total)}</span>
+          </div>
+        </div>
+
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label="Tipo de venta">
-            <select className="select" value={tipo} onChange={(e) => setTipo(e.target.value as 'local' | 'despacho')}>
+            <select className="select" value={tipo} onChange={(e) => setTipo(e.target.value as 'local' | 'despacho')} disabled={bloqueado}>
               <option value="local">Mostrador</option>
               <option value="despacho">Despacho</option>
             </select>

@@ -87,3 +87,30 @@ describe('revertirVentaDeProducto — anular es el espejo exacto', () => {
     expect(revertirVentaDeProducto(otro, [simple(3)])).toBe(otro)
   })
 })
+
+// Editar los PRODUCTOS de una boleta ya hecha: updateSale repone los items
+// viejos y aplica los nuevos sobre el producto (que ya reflejaba la venta).
+describe('editar boleta: reponer items viejos + aplicar nuevos', () => {
+  const editar = (p: Product, viejos: SaleItem[], nuevos: SaleItem[]) => aplicarVentaAProducto(revertirVentaDeProducto(p, viejos), nuevos)
+  it('subir la cantidad descuenta solo la diferencia', () => {
+    const p = mkProducto({ stock: 177, sold: 3 }) // ya refleja la venta original de 3
+    const out = editar(p, [simple(3)], [simple(5)])
+    expect(out.stock).toBe(175)
+    expect(out.sold).toBe(5)
+  })
+  it('quitar una línea repone su stock exacto', () => {
+    const out = editar(mkProducto({ stock: 177, sold: 3 }), [simple(3)], [])
+    expect(out.stock).toBe(180)
+    expect(out.sold).toBe(0)
+  })
+  it('agregar una caja/variante descuenta sus unidades base', () => {
+    const out = editar(mkProducto({ stock: 177, sold: 3 }), [simple(3)], [simple(3), pack(1, 6)])
+    expect(out.stock).toBe(171) // 177 +3 −3 −6
+    expect(out.sold).toBe(9)
+  })
+  it('el "Inicial" (stock + vendido) no cambia al editar', () => {
+    const p = mkProducto({ stock: 177, sold: 3 })
+    const out = editar(p, [simple(3)], [simple(10)])
+    expect(out.stock + out.sold).toBe(p.stock + p.sold)
+  })
+})
