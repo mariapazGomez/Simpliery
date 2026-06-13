@@ -48,11 +48,26 @@ export async function POST(request: Request) {
   return NextResponse.json({ results })
 }
 
-// GET ?id=… → consulta el estado actual de un pedido en OptiRoute
+// GET ?check=1 → prueba la conexión: ¿el token de Vercel existe y OptiRoute lo acepta?
+// GET ?id=…   → consulta el estado actual de un pedido en OptiRoute
 export async function GET(request: Request) {
   const auth = authHeader()
+  const params = new URL(request.url).searchParams
+
+  if (params.get('check')) {
+    if (!auth) return NextResponse.json({ conectado: false, motivo: 'Falta la variable OPTIROUTE_TOKEN en Vercel (o falta el Redeploy después de guardarla).' })
+    try {
+      const res = await fetch(`${BASE}/integration-service-requests/?per_page=1`, { headers: { Authorization: auth } })
+      if (res.ok) return NextResponse.json({ conectado: true })
+      const data = await res.json().catch(() => ({}))
+      return NextResponse.json({ conectado: false, motivo: `OptiRoute rechazó el token (HTTP ${res.status}): ${JSON.stringify(data).slice(0, 200)}` })
+    } catch {
+      return NextResponse.json({ conectado: false, motivo: 'No se pudo conectar con OptiRoute (¿sin internet o servicio caído?).' })
+    }
+  }
+
   if (!auth) return NextResponse.json({ error: 'OptiRoute no está conectado' }, { status: 400 })
-  const id = new URL(request.url).searchParams.get('id')
+  const id = params.get('id')
   if (!id) return NextResponse.json({ error: 'Falta id' }, { status: 400 })
   try {
     const res = await fetch(`${BASE}/integration-service-requests/${encodeURIComponent(id)}/`, { headers: { Authorization: auth } })

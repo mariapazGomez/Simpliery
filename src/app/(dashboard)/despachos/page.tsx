@@ -316,7 +316,14 @@ export default function DespachosPage() {
           ok++
         }
       }
-      toast(ok ? `${ok} despacho(s) enviado(s) a OptiRoute` : 'No se pudo enviar a OptiRoute')
+      const errores = results.filter((r) => r.error).map((r) => r.error as string)
+      if (ok) {
+        toast(`${ok} despacho(s) enviado(s) a OptiRoute${errores.length ? ` · ${errores.length} rechazado(s): ${errores[0].slice(0, 160)}` : ''}`)
+      } else if (errores.some((e) => /token/i.test(e))) {
+        toast('OptiRoute rechazó el token guardado en Vercel — revisa OPTIROUTE_TOKEN y haz Redeploy')
+      } else {
+        toast('OptiRoute rechazó el envío: ' + (errores[0] || 'sin detalle').slice(0, 200))
+      }
       setSel(new Set())
     } catch {
       toast('Error de conexión con OptiRoute')

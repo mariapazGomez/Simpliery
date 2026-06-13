@@ -1,7 +1,7 @@
 'use client'
 
 // ---------- Configuración (portado de screen-config.jsx · solo Configuracion) ----------
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '@/lib/store'
 import { Icon } from '@/components/icon'
 import { PageHeader, Field, CatDot } from '@/components/ui'
@@ -36,6 +36,24 @@ export default function ConfiguracionPage() {
     }
     setOrLoading(false)
   }
+
+  // Estado REAL de la conexión: le pregunta al servidor si el token guardado en
+  // Vercel funciona contra OptiRoute. (El formulario de arriba siempre se ve
+  // vacío porque el navegador no guarda nada — esto muestra la verdad.)
+  const [orEstado, setOrEstado] = useState<{ conectado: boolean; motivo?: string } | null>(null)
+  const [orProbando, setOrProbando] = useState(false)
+  const probarConexion = useCallback(async () => {
+    setOrProbando(true)
+    try {
+      const res = await fetch('/api/optiroute/pedido?check=1')
+      const j = (await res.json().catch(() => ({}))) as { conectado?: boolean; motivo?: string }
+      setOrEstado({ conectado: !!j.conectado, motivo: j.motivo })
+    } catch {
+      setOrEstado({ conectado: false, motivo: 'No se pudo consultar al servidor.' })
+    }
+    setOrProbando(false)
+  }, [])
+  useEffect(() => { probarConexion() }, [probarConexion])
 
   const fileRef = useRef<HTMLInputElement>(null)
   const doExport = async () => {
@@ -107,6 +125,18 @@ export default function ConfiguracionPage() {
         <section className="card">
           <div className="card-head"><span style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--info-tint)', color: 'var(--info)', display: 'grid', placeItems: 'center' }}><Icon name="truck" size={16} /></span><div style={{ flex: 1 }}><div className="card-title">Conectar OptiRoute</div><div className="card-sub">Para enviar tus despachos a optimización de rutas</div></div></div>
           <div className="card-pad" style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 11, background: orEstado === null ? 'var(--surface)' : orEstado.conectado ? 'var(--ok-tint)' : 'var(--danger-tint)', border: '1px solid var(--line)' }}>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: orEstado === null ? 'var(--ink-3)' : orEstado.conectado ? 'var(--primary-700)' : 'var(--danger)', lineHeight: 1.45 }}>
+                {orProbando || orEstado === null
+                  ? 'Verificando conexión con OptiRoute…'
+                  : orEstado.conectado
+                    ? '✓ Conectado — el token guardado en Vercel funciona. No necesitas obtenerlo de nuevo.'
+                    : '✗ Sin conexión: ' + (orEstado.motivo || 'motivo desconocido')}
+              </div>
+              <button className="btn btn-ghost" style={{ fontSize: 12.5, flexShrink: 0 }} disabled={orProbando} onClick={probarConexion}>
+                <Icon name="history" size={13} />Probar conexión
+              </button>
+            </div>
             <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600, lineHeight: 1.5 }}>
               Ingresa tu usuario y clave de OptiRoute <strong>una sola vez</strong> para obtener tu token. No se guarda tu clave; solo se usa para generar el token, que luego pegarás en Vercel.
             </div>
