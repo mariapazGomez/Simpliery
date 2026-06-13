@@ -17,6 +17,9 @@ const supabase = createClient()
 
 export const TODAY = new Date() // fecha real actual
 
+/** Redondeo a 3 decimales: evita la deriva binaria del granel (9.299999999… kg). */
+const r3 = (n: number) => Math.round(n * 1000) / 1000
+
 const DEFAULT_SETTINGS: Settings = {
   business: 'Mi negocio', ownerName: '', ownerRole: 'Dueño/a', currency: 'Peso chileno (CLP)',
   methods: ['Efectivo', 'Transferencia', 'Tarjeta'], minStockDefault: 5, minMargin: 25,
@@ -119,6 +122,34 @@ export function montosPorMetodo(s: Sale): [string, number][] {
   if (!mixto || !mixto.monto || s.method === 'Crédito') return [[s.method, s.total]]
   const secundario = Math.min(mixto.monto, s.total)
   return [[s.method, s.total - secundario], [mixto.metodo, secundario]]
+}
+
+/* ---------- Matemática de stock (pura, testeable) ----------
+   La regla de oro del inventario: una venta descuenta unidades BASE
+   (simple = qty, variante = qty × unidades del formato, granel = fracción)
+   y su anulación repone EXACTAMENTE lo mismo. */
+
+/** Unidades base que mueven los ítems de una venta (todas sus líneas). */
+export function unidadesBaseDeItems(items: SaleItem[]): number {
+  return items.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
+}
+
+/** Aplica una venta a un producto: descuenta stock y suma `sold` en unidades base
+ *  (así "Inicial = stock + vendido" no cambia al vender variantes o granel).
+ *  El clamp a 0 es defensa ante carreras multi-dispositivo; la UI impide sobrevender. */
+export function aplicarVentaAProducto(p: Product, items: SaleItem[]): Product {
+  const propios = items.filter((i) => i.productId === p.id)
+  if (!propios.length) return p
+  const deduct = unidadesBaseDeItems(propios)
+  return { ...p, stock: r3(Math.max(0, p.stock - deduct)), sold: r3(p.sold + deduct) }
+}
+
+/** Espejo EXACTO de aplicarVentaAProducto: la venta "no ocurrió". */
+export function revertirVentaDeProducto(p: Product, items: SaleItem[]): Product {
+  const propios = items.filter((i) => i.productId === p.id)
+  if (!propios.length) return p
+  const back = unidadesBaseDeItems(propios)
+  return { ...p, stock: r3(p.stock + back), sold: r3(Math.max(0, p.sold - back)) }
 }
 
 interface StoreValue {
@@ -253,21 +284,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           })
         })
       }
-      setProducts((ps) =>
-        ps.map((p) => {
-          const simpleIt = items.find((i) => i.productId === p.id && !i.formatId)
-          const fmtItems = items.filter((i) => i.productId === p.id && i.formatId)
-          if (!simpleIt && !fmtItems.length) return p
-          const simpleDeduct = simpleIt ? simpleIt.qty : 0
-          const fmtDeduct = fmtItems.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
-          const totalDeduct = simpleDeduct + fmtDeduct
-          // `sold` se lleva en UNIDADES BASE (lo mismo que descuenta el stock):
-          // así "Inicial = stock + vendido" no cambia al vender variantes o granel.
-          return { ...p, stock: Math.max(0, p.stock - totalDeduct), sold: p.sold + totalDeduct }
-        }),
-      )
+      setProducts((ps) => ps.map((p) => aplicarVentaAProducto(p, items)))
       setMovements((m) => [
-        { id: 'mv' + boleta, date: new Date(), product: items.length > 1 ? `${items.length} productos` : items[0].name, type: 'Venta', qty: -items.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0), note: 'Boleta ' + boleta },
+        { id: 'mv' + boleta, date: new Date(), product: items.length > 1 ? `${items.length} productos` : items[0].name, type: 'Venta', qty: -unidadesBaseDeItems(items), note: 'Boleta ' + boleta },
         ...m,
       ])
       toast('Venta registrada · ' + fmtCLP(total))
@@ -280,19 +299,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const sale = sales.find((s) => s.id === saleId)
     if (!sale) return
     // Repone el stock que esta venta había descontado (la venta "no ocurrió").
-    setProducts((ps) =>
-      ps.map((p) => {
-        const simpleIt = sale.items.find((i) => i.productId === p.id && !i.formatId)
-        const fmtItems = sale.items.filter((i) => i.productId === p.id && i.formatId)
-        if (!simpleIt && !fmtItems.length) return p
-        const simpleAdd = simpleIt ? simpleIt.qty : 0
-        const fmtAdd = fmtItems.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0)
-        // Espejo exacto de registrarVenta: repone stock y `sold` en unidades base.
-        return { ...p, stock: p.stock + simpleAdd + fmtAdd, sold: Math.max(0, p.sold - (simpleAdd + fmtAdd)) }
-      }),
-    )
+    setProducts((ps) => ps.map((p) => revertirVentaDeProducto(p, sale.items)))
     setMovements((mv) => [
-      { id: 'mv' + Date.now(), date: new Date(), product: sale.items.length > 1 ? `${sale.items.length} productos` : sale.items[0]?.name ?? '', type: 'Ajuste', qty: sale.items.reduce((a, i) => a + i.qty * (i.baseUnitsPerItem || 1), 0), note: 'Anulación boleta ' + sale.boleta },
+      { id: 'mv' + Date.now(), date: new Date(), product: sale.items.length > 1 ? `${sale.items.length} productos` : sale.items[0]?.name ?? '', type: 'Ajuste', qty: unidadesBaseDeItems(sale.items), note: 'Anulación boleta ' + sale.boleta },
       ...mv,
     ])
     setSales((ss) => ss.filter((s) => s.id !== saleId))

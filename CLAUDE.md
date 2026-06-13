@@ -9,11 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run dev      # dev server (Next.js, http://localhost:3000)
-npm run build    # production build — also the only typecheck/lint gate
+npm run build    # production build — typecheck/lint gate (also typechecks tests)
 npm run start    # serve production build
+npm test         # vitest run — unit tests of business invariants
 ```
 
-There is **no** test runner, no standalone lint script, and no separate typecheck script. `npm run build` runs TypeScript checking + Next.js lint; treat a clean build as the verification bar. The `bash scripts/*.sh` artifact commands mentioned in Memory.md do not exist in this repo.
+**Tests (vitest)**: `src/lib/__tests__/*.test.ts` cover the pure business logic — `montosPorMetodo` (payment splitting consumed by cierre/flujo/reportes), `clientMetrics` (VIP/riesgo/frecuencia), `precioPorTramo` + granel conversions, channel pricing, `despachoToPedido` (OptiRoute payload), `optirouteStatusToEstado`, `reviveDates`, and the **stock invariants** (`aplicarVentaAProducto`/`revertirVentaDeProducto`/`unidadesBaseDeItems` in store.tsx — registrarVenta/deleteSale delegate to these pure helpers; venta↔anulación symmetry, base-units accounting, float rounding). Config in `vitest.config.ts` (node env, `@` alias, dummy Supabase env vars so store/cloud-state modules can be imported — no test touches the network). **Run `npm test` after touching any of that logic; never inline stock math back into the React closures.**
+
+There is no standalone lint script. `npm run build` runs TypeScript checking + Next.js lint; treat clean build + green tests as the verification bar. The `bash scripts/*.sh` artifact commands mentioned in Memory.md do not exist in this repo.
 
 ## Architecture — read this before trusting Memory.md / AGENTS.md
 

@@ -18,7 +18,7 @@ function NavSpinner() {
 
 export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const { settings, clientes } = useStore()
-  const { puedeVer } = usePermisos()
+  const { puedeVer, esAdmin } = usePermisos()
   const m = useMetrics()
   const router = useRouter()
   const pathname = usePathname()
@@ -66,7 +66,6 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
               {n.label}
               {n.id === 'inventario' && m.lowStock.length > 0 && <span className="nav-badge">{m.lowStock.length}</span>}
               {n.id === 'segmentos' && proximos > 0 && <span className="nav-badge">{proximos}</span>}
-              {n.id === 'recordatorios' && <span className="nav-badge" style={{ background: 'var(--terra)' }}>!</span>}
               {n.id === 'clientes' && m.totalDeuda > 0 && <span className="nav-badge">{m.clientesDeudores}</span>}
               {n.id === 'fiados' && m.totalDeuda > 0 && <span className="nav-badge">{m.clientesDeudores}</span>}
               <NavSpinner />
@@ -83,9 +82,11 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
             <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{settings.ownerName?.trim() || 'Mi cuenta'}</div>
             <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{settings.ownerRole?.trim() || 'Dueño/a'}</div>
           </div>
-          <Link href={ROUTE_MAP.config} onClick={() => setOpen(false)} title="Configuración" style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
-            <Icon name="config" size={15} />
-          </Link>
+          {esAdmin && (
+            <Link href={ROUTE_MAP.config} onClick={() => setOpen(false)} title="Configuración" style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>
+              <Icon name="config" size={15} />
+            </Link>
+          )}
         </div>
         <button onClick={cerrarSesion} className="nav-item" style={{ width: '100%', marginTop: 4, color: 'var(--danger)' }}>
           <Icon name="logout" size={18} className="nav-ic" />
