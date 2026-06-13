@@ -7,7 +7,7 @@ import { stockState } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, SearchBox, CatDot, Field, Mini, EmptyState, Modal } from '@/components/ui'
 import { StockChip } from '@/components/charts'
-import { FormatBreakdown } from '@/components/formatos'
+import { FormatBreakdown, StockEnCajas } from '@/components/formatos'
 import type { Product } from '@/types'
 
 function ReponerModal({ product, onClose }: { product: Product; onClose: () => void }) {
@@ -228,7 +228,7 @@ export default function InventarioPage() {
                       </td>
                       <td className="num tnum muted">{p.stock + p.sold}</td>
                       <td className="num tnum muted">{p.sold}</td>
-                      <td className="num tnum" style={{ fontWeight: 800, color: st === 'sin' ? 'var(--danger)' : st === 'bajo' ? 'oklch(0.50 0.10 70)' : 'var(--ink)' }}>{p.stock}</td>
+                      <td className="num tnum" style={{ fontWeight: 800, color: st === 'sin' ? 'var(--danger)' : st === 'bajo' ? 'oklch(0.50 0.10 70)' : 'var(--ink)' }}>{p.stock}<StockEnCajas product={p} /></td>
                       <td className="num tnum muted">{p.min}</td>
                       <td><StockChip state={st} /></td>
                       <td className="num">

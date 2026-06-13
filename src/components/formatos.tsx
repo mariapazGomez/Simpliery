@@ -372,6 +372,26 @@ export function FormatBreakdown({ product }: { product: ProductWithKg }) {
   )
 }
 
+/* ── StockEnCajas: equivalente en cajas, a la vista en el inventario ──
+ * Toma el formato MÁS GRANDE del producto (la "caja"/bulto madre) y muestra
+ * cuántas cajas equivale el stock actual + el resto suelto. Solo para unidades
+ * contables (no peso/granel). */
+export function StockEnCajas({ product }: { product: ProductWithKg }) {
+  const { getFormats } = useFormats()
+  const isWeight = ['kg', 'gramo', 'litro', 'mililitro'].includes(product.unit || 'Unidad')
+  const fmts = getFormats(product.id)
+  if (isWeight || !fmts.length) return null
+  const box = fmts.reduce((a, b) => (b.qty > a.qty ? b : a))
+  if (box.qty <= 1) return null // un formato de 1 unidad no aporta nada
+  const cajas = Math.floor(product.stock / box.qty)
+  const resto = Math.round(product.stock - cajas * box.qty)
+  return (
+    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink-3)', marginTop: 2, whiteSpace: 'nowrap' }}>
+      = {cajas} {box.name}{resto > 0 ? ` + ${resto} u.` : ''}
+    </div>
+  )
+}
+
 /* ── GranelSheet: "otra cantidad" para productos por peso con tramos ── */
 export function GranelSheet({ product, formats, onAdd, onCancel }: { product: ProductWithKg; formats: Format[]; onAdd: (amountBase: number, price: number, label: string) => void; onCancel: () => void }) {
   const small = granelInputUnit(product.unit)
