@@ -31,12 +31,13 @@ function EstadoChip({ estado, size = 'sm' }: { estado: Estado; size?: 'sm' | 'lg
 }
 
 /* ── Detalle pedido modal ─────────────────────────────── */
-function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDelete }: { pedido: Pedido; onClose: () => void; onUpdate: (id: string, patch: Partial<Despacho>) => void; onEnviar: (d: Pedido) => void; onActualizar: (d: Pedido) => void; onDelete: (id: string) => void }) {
+function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDelete, onDeleteVenta }: { pedido: Pedido; onClose: () => void; onUpdate: (id: string, patch: Partial<Despacho>) => void; onEnviar: (d: Pedido) => void; onActualizar: (d: Pedido) => void; onDelete: (id: string) => void; onDeleteVenta: (saleId: string) => void }) {
   const { despachos } = useStore()
   const { nomina } = useFinanzas()
   const [estado, setEstado] = useState<Estado>(pedido.estado)
   const [obs, setObs] = useState(pedido.nota || '')
   const [rep, setRep] = useState(pedido.repartidor)
+  const [confirmDel, setConfirmDel] = useState(false)
   // Datos de entrega editables (se espejan a la venta al guardar).
   const [cliente, setCliente] = useState(pedido.cliente)
   const [telefono, setTelefono] = useState(pedido.telefono || '')
@@ -57,11 +58,34 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDele
     })
     onClose()
   }
-  const eliminar = () => {
-    const aviso = pedido.optirouteId
-      ? `Vas a eliminar el despacho de ${pedido.cliente}.\n\nYA fue enviado a OptiRoute: el cambio NO se refleja allá, debes cancelarlo a mano en OptiRoute.\n\nLa venta (boleta #${pedido.boleta}) NO se borra.\n\n¿Eliminar el despacho?`
-      : `Vas a eliminar el despacho de ${pedido.cliente} (boleta #${pedido.boleta}).\n\nLa venta NO se borra, solo el pedido de reparto.\n\n¿Eliminar?`
-    if (window.confirm(aviso)) { onDelete(pedido.id); onClose() }
+  // Borrar pide elegir: anular la venta completa (repone stock, saca de caja/deuda
+  // y borra la boleta) o quitar solo el reparto dejando la venta registrada.
+  if (confirmDel) {
+    return (
+      <Modal
+        title={`Eliminar despacho · boleta #${pedido.boleta}`}
+        sub={pedido.cliente}
+        onClose={() => setConfirmDel(false)}
+        width={470}
+        footer={<button className="btn btn-ghost" onClick={() => setConfirmDel(false)}>Volver</button>}
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          {pedido.optirouteId && (
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'oklch(0.50 0.10 70)', background: 'var(--warn-tint)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.5 }}>
+              <Icon name="truck" size={13} /> Ya fue enviado a OptiRoute: cancélalo también a mano allá, esto no lo toca.
+            </div>
+          )}
+          <button className="btn" style={{ display: 'block', textAlign: 'left', height: 'auto', padding: '12px 14px', background: 'var(--danger-tint)', color: 'var(--danger)', border: '1px solid var(--danger-tint)' }} onClick={() => { onDeleteVenta(pedido.saleId); onClose() }}>
+            <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="trash" size={15} />Anular la venta completa</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 4, lineHeight: 1.45 }}>Borra la boleta #{pedido.boleta}, repone el stock y la saca de caja/deuda. Úsalo si el pedido entero se cae.</div>
+          </button>
+          <button className="btn" style={{ display: 'block', textAlign: 'left', height: 'auto', padding: '12px 14px', background: 'var(--surface-3)', color: 'var(--ink)', border: '1px solid var(--line)' }} onClick={() => { onDelete(pedido.id); onClose() }}>
+            <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="truck" size={15} />Quitar solo el reparto</div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 4, lineHeight: 1.45, color: 'var(--ink-3)' }}>Elimina el despacho pero la venta #{pedido.boleta} queda registrada (plata y stock se mantienen). Úsalo si la entrega se hace de otra forma.</div>
+          </button>
+        </div>
+      </Modal>
+    )
   }
   return (
     <Modal
@@ -71,7 +95,7 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDele
       width={560}
       footer={
         <>
-          <button className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--danger)' }} onClick={eliminar}>
+          <button className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--danger)' }} onClick={() => setConfirmDel(true)}>
             <Icon name="trash" size={15} />Eliminar
           </button>
           <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
@@ -299,7 +323,7 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
 
 /* ── Main Despachos screen ───────────────────────────── */
 export default function DespachosPage() {
-  const { despachos, updateDespacho, deleteDespacho, toast } = useStore()
+  const { despachos, updateDespacho, deleteDespacho, deleteSale, toast } = useStore()
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroCiudad, setFiltroCiudad] = useState('Todas')
   const [filtroEnvio, setFiltroEnvio] = useState('todos') // todos | enviados | no_enviados
@@ -531,7 +555,7 @@ export default function DespachosPage() {
         </div>
       )}
 
-      {selected && <PedidoModal pedido={selected} onClose={() => setSelected(null)} onUpdate={updatePedido} onEnviar={(d) => enviarASeleccionados([d.id])} onActualizar={() => actualizarEstados()} onDelete={deleteDespacho} />}
+      {selected && <PedidoModal pedido={selected} onClose={() => setSelected(null)} onUpdate={updatePedido} onEnviar={(d) => enviarASeleccionados([d.id])} onActualizar={() => actualizarEstados()} onDelete={deleteDespacho} onDeleteVenta={deleteSale} />}
     </div>
   )
 }
