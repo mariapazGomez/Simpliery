@@ -2,8 +2,8 @@
 // del dinero por método — la consumen cierre de caja, flujo, reportes y dashboard)
 // y clientMetrics (categoría VIP/riesgo, frecuencia y proyección de recompra).
 import { describe, it, expect } from 'vitest'
-import { montosPorMetodo, clientMetrics } from '@/lib/store'
-import type { Sale, Cliente, Compra } from '@/types'
+import { montosPorMetodo, clientMetrics, reconciliarDespacho, despachoDesdeVenta } from '@/lib/store'
+import type { Sale, Cliente, Compra, ClienteRef, Despacho } from '@/types'
 
 /* ── helpers de datos mínimos (tipos completos, valores de prueba) ── */
 const mkSale = (p: Partial<Sale>): Sale => ({
@@ -121,5 +121,51 @@ describe('clientMetrics — el cliente como activo', () => {
     // Huevo Docena: 2+2 unidades, $14.000+$14.000 = $28.000 → top 1
     expect(m.topProductos[0]).toMatchObject({ name: 'Huevo Docena', qty: 4, total: 28000 })
     expect(m.topCats[0]).toEqual(['Huevos', 28000])
+  })
+})
+
+/* ── reconciliarDespacho: editar la venta crea/actualiza/quita el despacho ── */
+const refCliente = (p: Partial<ClienteRef> = {}): ClienteRef => ({
+  nombre: 'Lukas', numero: '9 9519 4321', correo: 'lukas@mail.cl', direccion: 'Av. Borgoño 14580', depto: 'Depto 1003', ciudad: 'Viña del Mar', ...p,
+})
+const mkDesp = (p: Partial<Despacho> = {}): Despacho => ({
+  id: 'desp_b1', saleId: 'b1', boleta: 1, fecha: new Date(), cliente: 'Lukas', telefono: '995194321', correo: '',
+  direccion: 'Av. Borgoño 14580', ciudad: 'Viña del Mar', nota: '', repartidor: 'Sin asignar', estado: 'pendiente',
+  items: [], total: 0, method: 'Efectivo', ...p,
+})
+
+describe('reconciliarDespacho — la venta manda sobre su despacho', () => {
+  it('local sin despacho previo: no hace nada', () => {
+    const r = reconciliarDespacho(mkSale({ tipo: 'local' }), null, undefined)
+    expect(r.accion).toBe('ninguna')
+  })
+  it('pasar a despacho (no había): crea el despacho con los datos de la venta', () => {
+    const sale = mkSale({ tipo: 'despacho', total: 18500, cliente: refCliente() })
+    const r = reconciliarDespacho(sale, sale.cliente, undefined)
+    expect(r.accion).toBe('crear')
+    expect(r.despacho).toMatchObject({ saleId: 'b1', direccion: 'Av. Borgoño 14580', ciudad: 'Viña del Mar', total: 18500, telefono: '9 9519 4321' })
+  })
+  it('volver a mostrador (tenía despacho): lo quita', () => {
+    const r = reconciliarDespacho(mkSale({ tipo: 'local' }), null, mkDesp())
+    expect(r.accion).toBe('quitar')
+    expect(r.despacho).toBeUndefined()
+  })
+  it('sigue despacho con nueva dirección: actualiza y preserva estado/repartidor/OptiRoute', () => {
+    const previo = mkDesp({ estado: 'en_ruta', repartidor: 'Pedro', optirouteId: 'OR-99', trackingUrl: 'http://t/99', nota: 'dejar en conserjería' })
+    const sale = mkSale({ tipo: 'despacho', total: 20000, cliente: refCliente({ direccion: 'Nueva 123' }) })
+    const r = reconciliarDespacho(sale, sale.cliente, previo)
+    expect(r.accion).toBe('actualizar')
+    expect(r.despacho).toMatchObject({
+      id: 'desp_b1', direccion: 'Nueva 123', total: 20000,
+      estado: 'en_ruta', repartidor: 'Pedro', nota: 'dejar en conserjería',
+      optirouteId: 'OR-99', trackingUrl: 'http://t/99',
+    })
+  })
+  it('despachoDesdeVenta sin previo usa id determinista desp_<saleId> y estado pendiente', () => {
+    const sale = mkSale({ id: 'b46224', tipo: 'despacho', cliente: refCliente() })
+    const d = despachoDesdeVenta(sale, sale.cliente)
+    expect(d.id).toBe('desp_b46224')
+    expect(d.estado).toBe('pendiente')
+    expect(d.repartidor).toBe('Sin asignar')
   })
 })

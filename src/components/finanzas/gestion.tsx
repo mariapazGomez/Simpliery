@@ -255,8 +255,23 @@ export function FinGastos() {
   const fm = useFinMetrics()
   const [subTab, setSubTab] = useState('gastos')
   const [form, setForm] = useState(false)
-  const [f, setF] = useState({ cat: 'Arriendo', desc: '', monto: '', method: 'Transferencia', recurrente: false, respaldo: true, proveedor: '', estado: 'pendiente' as 'pendiente' | 'pagado', fecha: TODAY.toISOString().slice(0, 10) })
+  const GASTO_DEFAULT = { cat: 'Arriendo', desc: '', monto: '', method: 'Transferencia', recurrente: false, respaldo: true, proveedor: '', estado: 'pendiente' as 'pendiente' | 'pagado', fecha: TODAY.toISOString().slice(0, 10) }
+  const [f, setF] = useState(GASTO_DEFAULT)
   const sF = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((s) => ({ ...s, [k]: v }))
+  const [editId, setEditId] = useState<string | null>(null)
+  const abrirAgregar = () => { setEditId(null); setF(GASTO_DEFAULT); setForm(true) }
+  const abrirEditar = (g: import('@/types').Gasto) => {
+    setEditId(g.id)
+    setF({ cat: g.cat, desc: g.desc, monto: String(g.monto), method: g.method, recurrente: g.recurrente, respaldo: g.respaldo ?? true, proveedor: g.proveedor, estado: g.estado, fecha: g.fecha.toISOString().slice(0, 10) })
+    setForm(true)
+  }
+  const cerrarGasto = () => { setForm(false); setEditId(null) }
+  const guardarGasto = () => {
+    const datos = { cat: f.cat, desc: f.desc, monto: +f.monto || 0, method: f.method, recurrente: f.recurrente, respaldo: f.respaldo, proveedor: f.proveedor, estado: f.estado, fecha: new Date(f.fecha) }
+    if (editId) updateGasto(editId, datos)
+    else addGasto(datos)
+    cerrarGasto()
+  }
   // Formulario de nómina (persona / pago al personal)
   const [formNom, setFormNom] = useState(false)
   const [fn, setFn] = useState({ nombre: '', cargo: '', tipo: 'Sueldo fijo', monto: '', dia: '5', bono: '' })
@@ -278,7 +293,7 @@ export function FinGastos() {
             <button key={k} className={subTab === k ? 'on' : ''} onClick={() => setSubTab(k)}>{l}</button>
           ))}
         </div>
-        {subTab === 'gastos' && <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setForm(true)}><Icon name="plus" size={16} />Agregar gasto</button>}
+        {subTab === 'gastos' && <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={abrirAgregar}><Icon name="plus" size={16} />Agregar gasto</button>}
         {subTab === 'nomina' && <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setFormNom(true)}><Icon name="plus" size={16} />Agregar persona</button>}
         {subTab === 'marketing' && <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setFormMkt(true)}><Icon name="plus" size={16} />Agregar campaña</button>}
       </div>
@@ -302,7 +317,10 @@ export function FinGastos() {
                   <td className="num tnum" style={{ fontWeight: 800 }}>{fmtCLP(g.monto)}</td>
                   <td><span className="chip chip-neutral" style={{ fontSize: 11.5 }}>{g.recurrente ? 'Fijo' : 'Variable'}</span></td>
                   <td><span className="chip" style={{ background: g.estado === 'pagado' ? 'var(--ok-tint)' : 'var(--warn-tint)', color: g.estado === 'pagado' ? 'var(--primary-700)' : 'oklch(0.50 0.10 70)', fontSize: 12, cursor: 'pointer' }} onClick={() => updateGasto(g.id, { estado: g.estado === 'pagado' ? 'pendiente' : 'pagado' })}>{g.estado}</span></td>
-                  <td><button className="btn btn-ghost btn-icon" style={{ width: 30, height: 30 }} onClick={() => deleteGasto(g.id)}><Icon name="trash" size={14} /></button></td>
+                  <td><div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                    <button className="btn btn-ghost btn-icon" style={{ width: 30, height: 30 }} title="Editar" onClick={() => abrirEditar(g)}><Icon name="edit" size={14} /></button>
+                    <button className="btn btn-ghost btn-icon" style={{ width: 30, height: 30 }} title="Eliminar" onClick={() => deleteGasto(g.id)}><Icon name="trash" size={14} /></button>
+                  </div></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -394,13 +412,13 @@ export function FinGastos() {
 
       {form && (
         <Modal
-          title="Registrar gasto"
-          onClose={() => setForm(false)}
+          title={editId ? 'Editar gasto' : 'Registrar gasto'}
+          onClose={cerrarGasto}
           width={500}
           footer={
             <>
-              <button className="btn btn-ghost" onClick={() => setForm(false)}>Cancelar</button>
-              <button className="btn btn-primary" disabled={!f.desc || !f.monto} onClick={() => { addGasto({ cat: f.cat, desc: f.desc, monto: +f.monto || 0, method: f.method, recurrente: f.recurrente, respaldo: f.respaldo, proveedor: f.proveedor, estado: f.estado, fecha: new Date(f.fecha) }); setForm(false) }}><Icon name="check" size={15} />Guardar</button>
+              <button className="btn btn-ghost" onClick={cerrarGasto}>Cancelar</button>
+              <button className="btn btn-primary" disabled={!f.desc || !f.monto} onClick={guardarGasto}><Icon name="check" size={15} />Guardar</button>
             </>
           }
         >
@@ -419,6 +437,11 @@ export function FinGastos() {
               <input type="checkbox" id="rec" checked={f.recurrente} onChange={(e) => sF('recurrente', e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
               <label htmlFor="rec" style={{ fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>Gasto recurrente (se repite cada mes)</label>
             </div>
+            {editId && f.recurrente && (
+              <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600, lineHeight: 1.5 }}>
+                <Icon name="alert" size={12} /> Cambiar el monto afecta los meses que se generen de aquí en adelante; los meses ya creados no cambian (edítalos por separado si hace falta).
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <input type="checkbox" id="resp" checked={f.respaldo} onChange={(e) => sF('respaldo', e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
               <label htmlFor="resp" style={{ fontSize: 13.5, fontWeight: 700, cursor: 'pointer' }}>Tengo boleta o factura (respaldo para IVA crédito)</label>

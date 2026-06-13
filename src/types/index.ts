@@ -162,6 +162,10 @@ export interface Gasto {
   estado: 'pagado' | 'pendiente'
   /** ¿Tiene boleta/factura? Da derecho a IVA crédito. Ausente = sí (retrocompatible). */
   respaldo?: boolean
+  /** Mes al que pertenece el gasto ("AAAA-MM"). Lo usan los recurrentes generados. */
+  periodo?: string
+  /** Si es una copia mensual auto-generada, id del gasto recurrente "madre". */
+  recurrenteOrigen?: string
 }
 
 export interface NominaItem {

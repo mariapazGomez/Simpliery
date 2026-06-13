@@ -20,7 +20,7 @@ interface Deudor {
 
 /* ── Cliente detail modal ────────────────────────────── */
 function ClienteDetail({ c, onClose }: { c: Cliente; onClose: () => void }) {
-  const { updateCliente, toast } = useStore()
+  const { updateCliente, deleteCliente, sales, toast } = useStore()
   const m = useMemo(() => clientMetrics(c), [c])
   const [nota, setNota] = useState(c.nota || '')
   const [edit, setEdit] = useState(false)
@@ -47,6 +47,14 @@ function ClienteDetail({ c, onClose }: { c: Cliente; onClose: () => void }) {
     })
     toast('Datos del cliente actualizados')
     setEdit(false)
+  }
+  const eliminarCliente = () => {
+    const susVentas = sales.filter((s) => s.cliente?.id === c.id)
+    const deuda = susVentas.filter((s) => s.credito && !s.pagado).reduce((a, s) => a + (s.montoPendiente ?? s.total), 0)
+    const aviso = deuda > 0
+      ? `${c.nombre} tiene una deuda pendiente de ${fmtCLP(deuda)}. Si lo eliminas, sigue saliendo en Deudores por sus boletas, pero pierdes su ficha y contacto.\n\n¿Eliminar de todas formas?`
+      : `Vas a eliminar a ${c.nombre} de tus clientes. Sus ventas quedan en el historial, pero pierdes su ficha y contacto.\n\n¿Eliminar?`
+    if (window.confirm(aviso)) { deleteCliente(c.id); onClose() }
   }
   const nextLabel = m.nextExpected
     ? m.daysUntilNext! > 0
@@ -76,6 +84,10 @@ function ClienteDetail({ c, onClose }: { c: Cliente; onClose: () => void }) {
           </>
         ) : (
           <>
+            <button className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--danger)' }} onClick={eliminarCliente}>
+              <Icon name="trash" size={15} />
+              Eliminar
+            </button>
             <button className="btn btn-ghost" onClick={onClose}>
               Cerrar
             </button>

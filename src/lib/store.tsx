@@ -152,6 +152,56 @@ export function revertirVentaDeProducto(p: Product, items: SaleItem[]): Product 
   return { ...p, stock: r3(p.stock + back), sold: r3(Math.max(0, p.sold - back)) }
 }
 
+/** Construye el Despacho que corresponde a una venta tipo despacho.
+ *  `cliente` aporta los datos de contacto/dirección (de la venta o de un edit).
+ *  Si hay un despacho `previo`, conserva lo que es del despacho (estado, repartidor,
+ *  observación y los datos de OptiRoute) y refresca lo que manda la venta. */
+export function despachoDesdeVenta(sale: Sale, cliente: ClienteRef | null, previo?: Despacho): Despacho {
+  const c = cliente || sale.cliente
+  return {
+    id: previo?.id ?? 'desp_' + sale.id,
+    saleId: sale.id,
+    boleta: sale.boleta,
+    fecha: sale.date,
+    cliente: c?.nombre || '',
+    telefono: c?.numero || c?.telefono || '',
+    correo: c?.correo || '',
+    direccion: c?.direccion || '',
+    depto: c?.depto,
+    ciudad: c?.ciudad || '',
+    nota: previo?.nota ?? '',
+    repartidor: previo?.repartidor ?? 'Sin asignar',
+    estado: previo?.estado ?? 'pendiente',
+    items: sale.items,
+    total: sale.total,
+    method: sale.method,
+    // Conserva el enlace con OptiRoute si el despacho ya fue enviado.
+    ...(previo?.optirouteId
+      ? {
+          optirouteId: previo.optirouteId,
+          trackingUrl: previo.trackingUrl,
+          trackingCode: previo.trackingCode,
+          optirouteStatus: previo.optirouteStatus,
+          enviadoEn: previo.enviadoEn,
+        }
+      : {}),
+  }
+}
+
+/** Dada una venta (ya con sus cambios aplicados) y el despacho que tenía, decide
+ *  qué hacer: crear el despacho (pasó a despacho), actualizarlo (sigue siendo
+ *  despacho), quitarlo (volvió a local) o nada. Función pura → testeable. */
+export function reconciliarDespacho(
+  sale: Sale,
+  cliente: ClienteRef | null,
+  previo: Despacho | undefined,
+): { accion: 'crear' | 'actualizar' | 'quitar' | 'ninguna'; despacho?: Despacho } {
+  if (sale.tipo === 'despacho') {
+    return { accion: previo ? 'actualizar' : 'crear', despacho: despachoDesdeVenta(sale, cliente, previo) }
+  }
+  return previo ? { accion: 'quitar' } : { accion: 'ninguna' }
+}
+
 interface StoreValue {
   negocioId: string | null
   rol: string | null
@@ -170,12 +220,14 @@ interface StoreValue {
   ajustarStock: (id: number, nuevo: number, note?: string) => void
   addClientes: (arr: Cliente[]) => void
   updateCliente: (id: string, patch: Partial<Cliente>) => void
+  deleteCliente: (id: string) => void
   saldarDeuda: (saleId: string, montoPagado: number, metodo?: string) => void
   deleteSale: (saleId: string) => void
   updateSale: (saleId: string, patch: Partial<Sale>) => void
   despachos: Despacho[]
   addDespacho: (d: Despacho) => void
   updateDespacho: (id: string, patch: Partial<Despacho>) => void
+  deleteDespacho: (id: string) => void
   categorias: string[]
   addCategoria: (name: string) => void
   renameCategoria: (oldName: string, nuevo: string) => void
@@ -289,10 +341,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         { id: 'mv' + boleta, date: new Date(), product: items.length > 1 ? `${items.length} productos` : items[0].name, type: 'Venta', qty: -unidadesBaseDeItems(items), note: 'Boleta ' + boleta },
         ...m,
       ])
+      // Si es despacho, el store crea el despacho persistente (un solo lugar para esto).
+      if (sale.tipo === 'despacho' && sale.cliente) {
+        setDespachos((ds) => [despachoDesdeVenta(sale, sale.cliente), ...ds])
+      }
       toast('Venta registrada · ' + fmtCLP(total))
       return sale
     },
-    [sales, setSales, setProducts, setMovements, setClientes, toast],
+    [sales, setSales, setProducts, setMovements, setClientes, setDespachos, toast],
   )
 
   const deleteSale = useCallback((saleId: string) => {
@@ -307,20 +363,85 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSales((ss) => ss.filter((s) => s.id !== saleId))
     // También sale del historial del cliente (la venta "no ocurrió").
     setClientes((cs) => cs.map((c) => (c.compras.some((x) => x.id === saleId) ? { ...c, compras: c.compras.filter((x) => x.id !== saleId) } : c)))
-    toast('Transacción eliminada · stock repuesto')
-  }, [sales, setProducts, setMovements, setSales, setClientes, toast])
+    // Y se lleva su despacho (si lo tenía) para no dejarlo huérfano.
+    const desp = despachos.find((d) => d.saleId === saleId)
+    if (desp) {
+      setDespachos((ds) => ds.filter((d) => d.id !== desp.id))
+      toast(desp.optirouteId ? 'Eliminada · stock repuesto · cancela el envío en OptiRoute' : 'Transacción y despacho eliminados · stock repuesto')
+    } else {
+      toast('Transacción eliminada · stock repuesto')
+    }
+  }, [sales, despachos, setProducts, setMovements, setSales, setClientes, setDespachos, toast])
 
+  // Editar una venta reconcilia TODO lo que depende de ella: el despacho
+  // (crear/actualizar/quitar según el tipo) y la copia de la compra en la ficha
+  // del cliente. La venta es la fuente de la verdad de productos/total/método/tipo.
   const updateSale = useCallback((saleId: string, patch: Partial<Sale>) => {
-    setSales((ss) => ss.map((s) => (s.id === saleId ? { ...s, ...patch } : s)))
-    toast('Transacción actualizada')
-  }, [setSales, toast])
+    const prev = sales.find((s) => s.id === saleId)
+    if (!prev) return
+    const merged: Sale = { ...prev, ...patch }
+    setSales((ss) => ss.map((s) => (s.id === saleId ? merged : s)))
+    // Mantiene sincronizada la compra dentro de la ficha del cliente.
+    setClientes((cs) =>
+      cs.map((c) =>
+        c.compras.some((x) => x.id === saleId)
+          ? { ...c, compras: c.compras.map((x) => (x.id === saleId ? { ...x, method: merged.method, total: merged.total, cost: merged.cost, profit: merged.profit, items: merged.items } : x)) }
+          : c,
+      ),
+    )
+    // Reconcilia el despacho asociado.
+    const previo = despachos.find((d) => d.saleId === saleId)
+    const { accion, despacho } = reconciliarDespacho(merged, merged.cliente, previo)
+    if (accion === 'crear' && despacho) {
+      setDespachos((ds) => [despacho, ...ds])
+      toast('Transacción actualizada · despacho creado')
+    } else if (accion === 'actualizar' && despacho) {
+      setDespachos((ds) => ds.map((d) => (d.id === despacho.id ? despacho : d)))
+      toast(previo?.optirouteId ? 'Actualizado aquí · en OptiRoute sigue el original' : 'Transacción y despacho actualizados')
+    } else if (accion === 'quitar' && previo) {
+      setDespachos((ds) => ds.filter((d) => d.id !== previo.id))
+      toast(previo.optirouteId ? 'Pasó a mostrador · cancela el envío en OptiRoute' : 'Transacción actualizada · despacho quitado')
+    } else {
+      toast('Transacción actualizada')
+    }
+  }, [sales, despachos, setSales, setClientes, setDespachos, toast])
 
   const addDespacho = useCallback((d: Despacho) => {
     setDespachos((ds) => [d, ...ds])
   }, [setDespachos])
+
+  // Editar un despacho: si tocas datos de contacto/dirección, se espejan de vuelta
+  // a la venta para que no diverjan. Estado/repartidor/nota son solo del despacho.
   const updateDespacho = useCallback((id: string, patch: Partial<Despacho>) => {
+    const previo = despachos.find((d) => d.id === id)
     setDespachos((ds) => ds.map((d) => (d.id === id ? { ...d, ...patch } : d)))
-  }, [setDespachos])
+    const tocaContacto = (['cliente', 'telefono', 'correo', 'direccion', 'depto', 'ciudad'] as const).some((k) => k in patch)
+    if (tocaContacto && previo?.saleId) {
+      setSales((ss) =>
+        ss.map((s) => {
+          if (s.id !== previo.saleId || !s.cliente) return s
+          return {
+            ...s,
+            cliente: {
+              ...s.cliente,
+              ...(patch.cliente !== undefined ? { nombre: patch.cliente } : {}),
+              ...(patch.telefono !== undefined ? { telefono: patch.telefono, numero: patch.telefono } : {}),
+              ...(patch.correo !== undefined ? { correo: patch.correo } : {}),
+              ...(patch.direccion !== undefined ? { direccion: patch.direccion } : {}),
+              ...(patch.depto !== undefined ? { depto: patch.depto } : {}),
+              ...(patch.ciudad !== undefined ? { ciudad: patch.ciudad } : {}),
+            },
+          }
+        }),
+      )
+    }
+  }, [despachos, setDespachos, setSales])
+
+  const deleteDespacho = useCallback((id: string) => {
+    const desp = despachos.find((d) => d.id === id)
+    setDespachos((ds) => ds.filter((d) => d.id !== id))
+    toast(desp?.optirouteId ? 'Despacho eliminado aquí · cancélalo en OptiRoute si ya iba en ruta' : 'Despacho eliminado')
+  }, [despachos, setDespachos, toast])
 
   // Devuelve el id asignado para que quien lo crea (p. ej. con variantes) lo use
   // sin adivinar. Calculamos el id una sola vez desde `products` y ese mismo va al estado.
@@ -380,9 +501,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     toast('Importación completada')
   }, [setClientes, toast])
 
+  // Editar la ficha del cliente actualiza su contacto en las ventas de ese cliente
+  // y en sus despachos PENDIENTES (los entregados/no entregados quedan históricos).
   const updateCliente = useCallback((id: string, patch: Partial<Cliente>) => {
     setClientes((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch } : c)))
-  }, [setClientes])
+    const tocaContacto = (['nombre', 'telefono', 'correo', 'direccion', 'depto', 'ciudad'] as const).some((k) => k in patch)
+    if (!tocaContacto) return
+    const saleIds = new Set(sales.filter((s) => s.cliente?.id === id).map((s) => s.id))
+    if (!saleIds.size) return
+    setSales((ss) =>
+      ss.map((s) =>
+        saleIds.has(s.id) && s.cliente
+          ? {
+              ...s,
+              cliente: {
+                ...s.cliente,
+                ...(patch.nombre !== undefined ? { nombre: patch.nombre } : {}),
+                ...(patch.telefono !== undefined ? { telefono: patch.telefono, numero: patch.telefono } : {}),
+                ...(patch.correo !== undefined ? { correo: patch.correo } : {}),
+                ...(patch.direccion !== undefined ? { direccion: patch.direccion } : {}),
+                ...(patch.depto !== undefined ? { depto: patch.depto } : {}),
+                ...(patch.ciudad !== undefined ? { ciudad: patch.ciudad } : {}),
+              },
+            }
+          : s,
+      ),
+    )
+    setDespachos((ds) =>
+      ds.map((d) => {
+        if (!saleIds.has(d.saleId) || d.estado === 'entregado' || d.estado === 'no_entregado') return d
+        return {
+          ...d,
+          ...(patch.nombre !== undefined ? { cliente: patch.nombre } : {}),
+          ...(patch.telefono !== undefined ? { telefono: patch.telefono } : {}),
+          ...(patch.correo !== undefined ? { correo: patch.correo } : {}),
+          ...(patch.direccion !== undefined ? { direccion: patch.direccion } : {}),
+          ...(patch.depto !== undefined ? { depto: patch.depto } : {}),
+          ...(patch.ciudad !== undefined ? { ciudad: patch.ciudad } : {}),
+        }
+      }),
+    )
+  }, [sales, setClientes, setSales, setDespachos])
+
+  // Borra un cliente de la base. NO toca sus ventas (la plata ya ocurrió); el
+  // aviso de deuda pendiente lo da la página antes de llamar aquí.
+  const deleteCliente = useCallback((id: string) => {
+    setClientes((cs) => cs.filter((c) => c.id !== id))
+    toast('Cliente eliminado')
+  }, [setClientes, toast])
 
   const addCategoria = useCallback((name: string) => {
     const c = name.trim()
@@ -429,17 +595,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       negocioId, rol,
       products, sales, movements, settings, setSettings, toast, clientes,
-      registrarVenta, addProduct, updateProduct, deleteProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+      registrarVenta, addProduct, updateProduct, deleteProduct, reponer, ajustarStock, addClientes, updateCliente, deleteCliente, saldarDeuda,
       deleteSale, updateSale,
-      despachos, addDespacho, updateDespacho,
+      despachos, addDespacho, updateDespacho, deleteDespacho,
       categorias, addCategoria, renameCategoria, deleteCategoria, reorderCategorias,
     }),
     [
       negocioId, rol,
       products, sales, movements, settings, setSettings, toast, clientes,
-      registrarVenta, addProduct, updateProduct, deleteProduct, reponer, ajustarStock, addClientes, updateCliente, saldarDeuda,
+      registrarVenta, addProduct, updateProduct, deleteProduct, reponer, ajustarStock, addClientes, updateCliente, deleteCliente, saldarDeuda,
       deleteSale, updateSale,
-      despachos, addDespacho, updateDespacho,
+      despachos, addDespacho, updateDespacho, deleteDespacho,
       categorias, addCategoria, renameCategoria, deleteCategoria, reorderCategorias,
     ],
   )

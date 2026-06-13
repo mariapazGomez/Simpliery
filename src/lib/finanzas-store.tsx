@@ -3,10 +3,50 @@
 // ---------- Finanzas Store: gastos, nómina, marketing, metas, créditos ----------
 // Portado de finanzas-store.jsx.
 
-import { createContext, useContext, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, type ReactNode } from 'react'
 import { useStore, TODAY, clientMetrics } from '@/lib/store'
 import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import type { Gasto, NominaItem, MarketingItem, Meta, Credito, CreditoPago } from '@/types'
+
+/** Mes de una fecha como "AAAA-MM" (comparable como texto). */
+const periodoDe = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+/** ¿Es un gasto fijo? El recurrente "madre" o cualquiera de sus copias mensuales. */
+export const esGastoFijo = (g: Gasto) => g.recurrente || !!g.recurrenteOrigen
+
+/** Dada la lista de gastos y la fecha de hoy, devuelve las copias mensuales que
+ *  FALTAN para los gastos recurrentes: una por cada mes entre el mes del gasto
+ *  madre y el mes actual. Id determinista (`g-rec-<madre>-<AAAA-MM>`) → idempotente
+ *  y a prueba de carreras multi-dispositivo (un mismo mes nunca se duplica). */
+export function instanciasFaltantes(gastos: Gasto[], hoy: Date): Gasto[] {
+  const anclas = gastos.filter((g) => g.recurrente && !g.recurrenteOrigen)
+  if (!anclas.length) return []
+  const existentes = new Set(gastos.map((g) => g.id))
+  const periodoHoy = periodoDe(hoy)
+  const nuevos: Gasto[] = []
+  for (const ancla of anclas) {
+    const cursor = new Date(ancla.fecha.getFullYear(), ancla.fecha.getMonth(), 1)
+    while (periodoDe(cursor) <= periodoHoy) {
+      const periodo = periodoDe(cursor)
+      const id = `g-rec-${ancla.id}-${periodo}`
+      // El mes del ancla ya está cubierto por el ancla; los demás se generan.
+      if (periodoDe(ancla.fecha) !== periodo && !existentes.has(id)) {
+        const ultimoDia = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate()
+        const dia = Math.min(ancla.fecha.getDate(), ultimoDia)
+        nuevos.push({
+          ...ancla,
+          id,
+          fecha: new Date(cursor.getFullYear(), cursor.getMonth(), dia),
+          periodo,
+          recurrente: false,
+          recurrenteOrigen: ancla.id,
+          estado: 'pendiente',
+        })
+      }
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+  }
+  return nuevos
+}
 
 export const GASTO_CATS = ['Arriendo', 'Sueldos', 'Marketing', 'Mercadería', 'Servicios', 'Transporte', 'Comisiones', 'Contabilidad', 'Mantención', 'Otros']
 export const GASTO_ICONS: Record<string, string> = {
@@ -50,7 +90,7 @@ export function useFinanzas(): FinanzasValue {
 
 export function FinanzasProvider({ children }: { children: ReactNode }) {
   const { negocioId } = useStore()
-  const [gastos, setGastos] = useCloudCollection<Gasto>('gastos', negocioId)
+  const [gastos, setGastos, rdyGastos] = useCloudCollection<Gasto>('gastos', negocioId)
   const [nomina, setNomina] = useCloudCollection<NominaItem>('nomina', negocioId)
   const [marketing, setMarketing] = useCloudCollection<MarketingItem>('marketing', negocioId)
   const [metas, setMetas] = useCloudCollection<Meta>('metas', negocioId)
@@ -83,6 +123,14 @@ export function FinanzasProvider({ children }: { children: ReactNode }) {
     [setCreditos],
   )
 
+  // Genera las copias mensuales faltantes de los gastos recurrentes (arriendo,
+  // sueldos fijos…) hasta el mes actual. Idempotente: una vez creadas, no repite.
+  useEffect(() => {
+    if (!negocioId || !rdyGastos) return
+    const faltan = instanciasFaltantes(gastos, TODAY)
+    if (faltan.length) setGastos((gs) => [...gs, ...faltan])
+  }, [negocioId, rdyGastos, gastos, setGastos])
+
   const value: FinanzasValue = { gastos, nomina, marketing, metas, creditos, addGasto, updateGasto, deleteGasto, addNomina, payNomina, deleteNomina, addMarketing, deleteMarketing, addMeta, updateMeta, deleteMeta, addCredito, updateCredito, pagarCredito }
   return <FinCtx.Provider value={value}>{children}</FinCtx.Provider>
 }
@@ -104,8 +152,10 @@ export function useFinMetrics() {
 
     const gastosMes = gastos.filter((g) => g.fecha >= mesInicio)
     const totalGastosMes = gastosMes.reduce((a, g) => a + g.monto, 0)
-    const gastosFijos = gastos.filter((g) => g.recurrente).reduce((a, g) => a + g.monto, 0)
-    const gastosVariables = totalGastosMes - gastos.filter((g) => g.recurrente && g.fecha >= mesInicio).reduce((a, g) => a + g.monto, 0)
+    // Fijos = los recurrentes de ESTE mes (madre o copia mensual generada), no
+    // todos los de la historia. El resto del mes es variable.
+    const gastosFijos = gastosMes.filter(esGastoFijo).reduce((a, g) => a + g.monto, 0)
+    const gastosVariables = totalGastosMes - gastosFijos
     const gastosPendientes = gastos.filter((g) => g.estado === 'pendiente').reduce((a, g) => a + g.monto, 0)
     const utilidadEstimada = gananciaMes - totalGastosMes
     const daysLeft = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate()

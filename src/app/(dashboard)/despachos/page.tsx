@@ -31,17 +31,38 @@ function EstadoChip({ estado, size = 'sm' }: { estado: Estado; size?: 'sm' | 'lg
 }
 
 /* ── Detalle pedido modal ─────────────────────────────── */
-function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pedido: Pedido; onClose: () => void; onUpdate: (id: string, patch: Partial<Despacho>) => void; onEnviar: (d: Pedido) => void; onActualizar: (d: Pedido) => void }) {
+function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDelete }: { pedido: Pedido; onClose: () => void; onUpdate: (id: string, patch: Partial<Despacho>) => void; onEnviar: (d: Pedido) => void; onActualizar: (d: Pedido) => void; onDelete: (id: string) => void }) {
   const { despachos } = useStore()
   const { nomina } = useFinanzas()
   const [estado, setEstado] = useState<Estado>(pedido.estado)
   const [obs, setObs] = useState(pedido.nota || '')
   const [rep, setRep] = useState(pedido.repartidor)
+  // Datos de entrega editables (se espejan a la venta al guardar).
+  const [cliente, setCliente] = useState(pedido.cliente)
+  const [telefono, setTelefono] = useState(pedido.telefono || '')
+  const [correo, setCorreo] = useState(pedido.correo || '')
+  const [direccion, setDireccion] = useState(pedido.direccion || '')
+  const [depto, setDepto] = useState(pedido.depto || '')
+  const [ciudad, setCiudad] = useState(pedido.ciudad || '')
   // Repartidores REALES: tu nómina + los ya usados en otros despachos (escribe uno nuevo si quieres).
   const repartidores = [...new Set(['Sin asignar', ...nomina.map((n) => n.nombre), ...despachos.map((d) => d.repartidor)])].filter(Boolean)
-  const dirCompleta = pedido.direccion + (pedido.depto ? ', ' + pedido.depto : '') + (pedido.ciudad ? ', ' + pedido.ciudad : '')
-  const waUrl = `https://wa.me/${(pedido.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${pedido.cliente.split(' ')[0]}, te escribimos para coordinar tu entrega.${pedido.trackingUrl ? ' Puedes seguir tu pedido aquí: ' + pedido.trackingUrl : ''}`)}`
+  const dirCompleta = direccion + (depto ? ', ' + depto : '') + (ciudad ? ', ' + ciudad : '')
+  const waUrl = `https://wa.me/${telefono.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${cliente.split(' ')[0]}, te escribimos para coordinar tu entrega.${pedido.trackingUrl ? ' Puedes seguir tu pedido aquí: ' + pedido.trackingUrl : ''}`)}`
   const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(dirCompleta)}`
+  const guardar = () => {
+    onUpdate(pedido.id, {
+      estado, nota: obs, repartidor: rep.trim() || 'Sin asignar',
+      cliente: cliente.trim(), telefono: telefono.trim(), correo: correo.trim(),
+      direccion: direccion.trim(), depto: depto.trim() || undefined, ciudad: ciudad.trim(),
+    })
+    onClose()
+  }
+  const eliminar = () => {
+    const aviso = pedido.optirouteId
+      ? `Vas a eliminar el despacho de ${pedido.cliente}.\n\nYA fue enviado a OptiRoute: el cambio NO se refleja allá, debes cancelarlo a mano en OptiRoute.\n\nLa venta (boleta #${pedido.boleta}) NO se borra.\n\n¿Eliminar el despacho?`
+      : `Vas a eliminar el despacho de ${pedido.cliente} (boleta #${pedido.boleta}).\n\nLa venta NO se borra, solo el pedido de reparto.\n\n¿Eliminar?`
+    if (window.confirm(aviso)) { onDelete(pedido.id); onClose() }
+  }
   return (
     <Modal
       title={'Pedido #' + pedido.boleta}
@@ -50,8 +71,11 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pe
       width={560}
       footer={
         <>
+          <button className="btn btn-ghost" style={{ marginRight: 'auto', color: 'var(--danger)' }} onClick={eliminar}>
+            <Icon name="trash" size={15} />Eliminar
+          </button>
           <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
-          <button className="btn btn-primary" onClick={() => { onUpdate(pedido.id, { estado, nota: obs, repartidor: rep.trim() || 'Sin asignar' }); onClose() }}>
+          <button className="btn btn-primary" onClick={guardar}>
             <Icon name="check" size={15} />
             Guardar cambios
           </button>
@@ -102,11 +126,20 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pe
             {repartidores.map((r) => (<option key={r} value={r} />))}
           </datalist>
         </label>
-        {/* Dirección */}
-        <div style={{ padding: '12px 14px', background: 'var(--surface-3)', borderRadius: 11 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 4 }}>Dirección de entrega</div>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{dirCompleta || 'Sin dirección'}</div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        {/* Datos de entrega (editables) */}
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)' }}>Datos de entrega</div>
+          <label className="field"><span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Cliente</span><input className="input" value={cliente} onChange={(e) => setCliente(e.target.value)} /></label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <label className="field"><span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Teléfono</span><input className="input" value={telefono} onChange={(e) => setTelefono(e.target.value)} /></label>
+            <label className="field"><span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Comuna</span><input className="input" value={ciudad} onChange={(e) => setCiudad(e.target.value)} /></label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
+            <label className="field"><span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Dirección</span><input className="input" value={direccion} onChange={(e) => setDireccion(e.target.value)} /></label>
+            <label className="field"><span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Depto / casa</span><input className="input" value={depto} onChange={(e) => setDepto(e.target.value)} placeholder="Opcional" /></label>
+          </div>
+          <label className="field"><span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-2)' }}>Correo</span><input className="input" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="Opcional" /></label>
+          <div style={{ display: 'flex', gap: 8 }}>
             <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
               <button className="btn btn-ghost" style={{ fontSize: 13 }}><Icon name="truck" size={15} />Abrir en Maps</button>
             </a>
@@ -114,10 +147,11 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar }: { pe
               <button className="btn btn-soft" style={{ fontSize: 13 }}><Icon name="phone" size={15} />WhatsApp</button>
             </a>
           </div>
+          {pedido.optirouteId && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>Editar aquí no actualiza OptiRoute (ya fue enviado): el original sigue allá.</div>}
         </div>
         {/* Productos */}
         <div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 7 }}>Productos del pedido</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 7 }}>Productos del pedido <span style={{ fontWeight: 600, color: 'var(--ink-4, var(--ink-3))' }}>· para cambiarlos, edita la venta</span></div>
           {pedido.items.map((it, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--line)', fontSize: 14 }}>
               <span style={{ fontWeight: 600 }}>{it.name} <span className="tnum" style={{ color: 'var(--ink-3)' }}>×{it.qty}</span></span>
@@ -265,7 +299,7 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
 
 /* ── Main Despachos screen ───────────────────────────── */
 export default function DespachosPage() {
-  const { despachos, updateDespacho, toast } = useStore()
+  const { despachos, updateDespacho, deleteDespacho, toast } = useStore()
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroCiudad, setFiltroCiudad] = useState('Todas')
   const [filtroEnvio, setFiltroEnvio] = useState('todos') // todos | enviados | no_enviados
@@ -497,7 +531,7 @@ export default function DespachosPage() {
         </div>
       )}
 
-      {selected && <PedidoModal pedido={selected} onClose={() => setSelected(null)} onUpdate={updatePedido} onEnviar={(d) => enviarASeleccionados([d.id])} onActualizar={() => actualizarEstados()} />}
+      {selected && <PedidoModal pedido={selected} onClose={() => setSelected(null)} onUpdate={updatePedido} onEnviar={(d) => enviarASeleccionados([d.id])} onActualizar={() => actualizarEstados()} onDelete={deleteDespacho} />}
     </div>
   )
 }

@@ -284,7 +284,7 @@ function DetalleModal({ venta, onClose, onEditar }: { venta: Sale; onClose: () =
 
 /* ---------- Editar una transacción (datos seguros, sin tocar stock) ---------- */
 function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
-  const { updateSale, settings } = useStore()
+  const { updateSale, settings, toast } = useStore()
   const cl = venta.cliente
   const [tipo, setTipo] = useState<'local' | 'despacho'>(venta.tipo || 'local')
   const [method, setMethod] = useState(venta.method)
@@ -293,11 +293,17 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
   const [telefono, setTelefono] = useState(cl?.telefono || cl?.numero || '')
   const [ciudad, setCiudad] = useState(cl?.ciudad || '')
   const [direccion, setDireccion] = useState(cl?.direccion || '')
+  const [depto, setDepto] = useState(cl?.depto || '')
   const [correo, setCorreo] = useState(cl?.correo || '')
 
   const metodos = [...new Set([...settings.methods, venta.method])]
 
+  // Para despacho, OptiRoute necesita nombre + dirección + comuna + teléfono.
+  const despachoListo = nombre.trim() && direccion.trim() && ciudad.trim() && telefono.trim()
+  const faltaDespacho = tipo === 'despacho' && (!conCliente || !despachoListo)
+
   const guardar = () => {
+    if (faltaDespacho) { toast('Para un despacho faltan datos: nombre, dirección, comuna y teléfono.', 'alert'); return }
     const cliente: ClienteRef | null =
       conCliente && nombre.trim()
         ? {
@@ -308,7 +314,7 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
             ciudad: ciudad.trim() || undefined,
             direccion: direccion.trim() || undefined,
             correo: correo.trim() || undefined,
-            depto: cl?.depto,
+            depto: depto.trim() || undefined,
           }
         : null
     // Cambiar el método mantiene coherente el estado de crédito: convertida a
@@ -337,7 +343,7 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
       footer={
         <>
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn-primary" onClick={guardar}><Icon name="check" size={16} />Guardar</button>
+          <button className="btn btn-primary" onClick={guardar} disabled={faltaDespacho}><Icon name="check" size={16} />Guardar</button>
         </>
       }
     >
@@ -368,13 +374,22 @@ function EditarModal({ venta, onClose }: { venta: Sale; onClose: () => void }) {
               <Field label="Teléfono"><input className="input" value={telefono} onChange={(e) => setTelefono(e.target.value)} /></Field>
               <Field label="Ciudad"><input className="input" value={ciudad} onChange={(e) => setCiudad(e.target.value)} /></Field>
             </div>
-            <Field label="Dirección" hint="Útil para despachos."><input className="input" value={direccion} onChange={(e) => setDireccion(e.target.value)} /></Field>
+            <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+              <Field label="Dirección" hint="Necesaria para despachos."><input className="input" value={direccion} onChange={(e) => setDireccion(e.target.value)} /></Field>
+              <Field label="Depto / casa"><input className="input" value={depto} onChange={(e) => setDepto(e.target.value)} placeholder="Opcional" /></Field>
+            </div>
             <Field label="Correo"><input className="input" type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} /></Field>
           </div>
         )}
 
+        {faltaDespacho && (
+          <div style={{ fontSize: 12.5, color: 'var(--danger)', fontWeight: 700, lineHeight: 1.5 }}>
+            <Icon name="alert" size={13} /> Para guardar como <strong>despacho</strong> necesitas nombre, dirección, comuna y teléfono del cliente.
+          </div>
+        )}
+
         <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, lineHeight: 1.5 }}>
-          <Icon name="alert" size={13} /> Esto edita los datos de <strong>esta venta</strong>. Para cambiar la ficha permanente del cliente (su dirección en todas sus compras), usa <strong>&ldquo;Ver cliente&rdquo;</strong> → Clientes.
+          <Icon name="alert" size={13} /> Si pasas esta venta a <strong>despacho</strong>, se crea el pedido en Despachos; si la vuelves a mostrador, se quita. Para cambiar la ficha permanente del cliente, usa <strong>&ldquo;Ver cliente&rdquo;</strong> → Clientes.
         </div>
       </div>
     </Modal>

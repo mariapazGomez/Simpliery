@@ -461,7 +461,7 @@ function Row({ label, value, muted, strong, tone }: { label: ReactNode; value: R
 
 
 export default function VentasPage() {
-  const { registrarVenta, settings, toast, products, addDespacho, categorias } = useStore()
+  const { registrarVenta, settings, toast, products, categorias } = useStore()
   const { productHasFormats, getFormats, maxUnitsForFormat } = useFormats()
   const { puedeVerDinero } = usePermisos()
   const isMobile = useIsMobile()
@@ -611,27 +611,8 @@ export default function VentasPage() {
       pagoMixto: mixedPay && +mixedPay.amount > 0 && method !== 'Crédito' ? { metodo: mixedPay.secondary, monto: +mixedPay.amount } : null,
     })
     setConfirmed(sale)
-    // Si es despacho, crea el despacho persistente (pendiente de enviar a OptiRoute).
-    if (tipo === 'despacho') {
-      addDespacho({
-        id: 'desp_' + sale.id,
-        saleId: sale.id,
-        boleta: sale.boleta,
-        fecha: sale.date,
-        cliente: cliente.nombre,
-        telefono: cliente.numero,
-        correo: cliente.correo,
-        direccion: cliente.direccion,
-        depto: cliente.depto,
-        ciudad: cliente.ciudad,
-        nota: '',
-        repartidor: 'Sin asignar',
-        estado: 'pendiente',
-        items: sale.items,
-        total: sale.total,
-        method,
-      })
-    }
+    // El despacho (si tipo === 'despacho') lo crea registrarVenta en el store,
+    // así no se duplica la lógica ni queda fuera de sincronía con la venta.
     setCart([])
     setCliente(emptyCliente)
     setDiscount({ type: 'pct', value: '' })
