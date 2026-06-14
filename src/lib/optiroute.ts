@@ -1,5 +1,4 @@
 // ---------- Helpers OptiRoute (puros, sin token — el token vive en el servidor) ----------
-import { fmtCLP } from '@/lib/format'
 import type { Despacho, EstadoDespacho } from '@/types'
 
 /** "Pedido de entrada" de OptiRoute construido desde un Despacho.
@@ -14,13 +13,20 @@ export interface PedidoOptiRoute {
 }
 
 /** Mapea un Despacho al objeto que espera la API de pedidos de OptiRoute.
- *  Incluye el DETALLE del pedido (productos, cantidades y precios) en
- *  `address_more_info` — el campo que OptiRoute muestra como info útil para la
- *  entrega — y la cantidad de bultos en `demand_a` (capacidad del vehículo). */
+ *  `address_more_info` va en formato SEPARADO POR COMAS para que en el Excel de
+ *  OptiRoute se pueda partir con "Texto en columnas": cada ítem "Nx Producto" en
+ *  su celda y el total (número) al final. Las comas dentro de los nombres se
+ *  limpian para no romper el separador. `demand_a` lleva los bultos. */
 export function despachoToPedido(d: Despacho): PedidoOptiRoute {
   const tel = (d.telefono || '').replace(/\s/g, '')
-  const detalle = d.items.map((it) => `${it.qty}x ${it.name} ${fmtCLP(it.price * it.qty)}`).join(' · ')
-  const masInfo = `Boleta #${d.boleta} · ${detalle} · TOTAL ${fmtCLP(d.total)} · Pago: ${d.method}`.slice(0, 950)
+  const limpio = (s: string) => s.replace(/,/g, ' ').replace(/\s+/g, ' ').trim()
+  const totalStr = String(Math.round(d.total))
+  // Lista COMPLETA de productos + total al final, lo más compacta posible para
+  // que quepa en el campo de OptiRoute (sin espacio tras la coma ni tras el "x";
+  // se conservan los espacios DENTRO del nombre para poder leerlo). Separador por
+  // comas para "Texto en columnas". Solo el total del pedido, sin valor unitario.
+  const detalle = d.items.map((it) => `${it.qty}x${limpio(it.name)}`).join(',')
+  const masInfo = `${detalle},${totalStr}`
   const bultos = Math.max(1, Math.round(d.items.reduce((a, it) => a + it.qty, 0)))
   return {
     reference: d.saleId,

@@ -3,7 +3,6 @@
 // de productos y precios, y los estados de OptiRoute deben mapear a los locales.
 import { describe, it, expect } from 'vitest'
 import { despachoToPedido, optirouteStatusToEstado } from '@/lib/optiroute'
-import { fmtCLP } from '@/lib/format'
 import type { Despacho } from '@/types'
 
 const mkDespacho = (p: Partial<Despacho> = {}): Despacho => ({
@@ -41,13 +40,26 @@ describe('despachoToPedido — lo que viaja a OptiRoute', () => {
     expect(ped.address.apartment_number).toBe('Depto 1003')
   })
 
-  it('incluye el detalle del pedido: boleta, productos con precio, total y método', () => {
+  it('descripción compacta separada por comas (para "Texto en columnas"): NxProducto + total al final', () => {
     const info = despachoToPedido(mkDespacho()).address.address_more_info || ''
-    expect(info).toContain('Boleta #46224')
-    expect(info).toContain('2x Huevo Docena ' + fmtCLP(14000))
-    expect(info).toContain('1x Almendras 250g ' + fmtCLP(4500))
-    expect(info).toContain('TOTAL ' + fmtCLP(18500))
-    expect(info).toContain('Pago: Transferencia')
+    expect(info).toBe('2xHuevo Docena,1xAlmendras 250g,18500')
+    // total como número plano (sin $ ni puntos) → Excel lo lee como número
+    expect(info.endsWith(',18500')).toBe(true)
+    // sin espacios sobrantes tras la coma ni tras el "x"
+    expect(info).not.toContain(', ')
+    expect(info).not.toContain('x ')
+  })
+
+  it('limpia comas dentro del nombre del producto para no romper el separador', () => {
+    const info = despachoToPedido(mkDespacho({ items: [{ productId: 9, name: 'Pack surtido, especial', cat: 'Otros', qty: 1, price: 5000, cost: 3000 }], total: 5000 })).address.address_more_info || ''
+    expect(info).toBe('1xPack surtido especial,5000')
+  })
+
+  it('pedido grande: incluye TODOS los productos y el total al final (no recorta)', () => {
+    const muchos = Array.from({ length: 12 }, (_, i) => ({ productId: i, name: `Producto ${i}`, cat: 'Otros', qty: 2, price: 1000, cost: 600 }))
+    const info = despachoToPedido(mkDespacho({ items: muchos, total: 24000 })).address.address_more_info || ''
+    expect((info.match(/xProducto/g) || []).length).toBe(12) // están los 12
+    expect(info.endsWith(',24000')).toBe(true)
   })
 
   it('demand_a = bultos (suma de cantidades) y NUNCA custom_fields (la API lo rechaza: espera lista, no dict)', () => {
