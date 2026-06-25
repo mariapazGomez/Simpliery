@@ -5,6 +5,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 @AGENTS.md
 @.claude/Memory.md
 
+## Metodología de Trabajo — Reglas Obligatorias
+
+### 1. Ramas — nunca commits directos a `main`
+
+Cada tarea usa su propia rama antes de tocar código:
+
+```bash
+git checkout -b feat/nombre-de-la-tarea   # nueva funcionalidad
+git checkout -b fix/nombre-del-bug        # corrección de error
+git checkout -b refactor/nombre-cambio    # reestructura sin nueva funcionalidad
+git checkout -b chore/nombre-tarea        # configuración, schema, deps
+git checkout -b docs/nombre-cambio        # solo documentación
+```
+
+Ejemplos válidos: `feat/migrar-categorias`, `chore/schema-iter1`, `refactor/eliminar-cloud-state`
+
+Al terminar: merge a `main`. Si hay revisión pendiente, crear PR primero.
+
+### 2. Backlog — toda tarea se documenta antes de iniciar
+
+Backlog en Notion: https://app.notion.com/p/388b1f3aefb58180bef7f9bd7e5d00a7
+
+Antes de empezar cualquier tarea:
+- Verificar que existe el ítem en el backlog (o crearlo si es nuevo)
+- El ítem debe tener: descripción clara + criterios de done verificables
+- Cambiar estado a "En progreso" al iniciar, "Completado" al hacer merge
+
+### 3. Commits — formato Conventional Commits
+
+```
+feat: descripción de lo que se agrega
+fix: descripción del problema corregido
+refactor: descripción del cambio sin nueva funcionalidad
+chore: schema SQL, configuración, deps, archivos de proyecto
+docs: cambio en documentación
+test: agregar o modificar tests
+```
+
+Reglas:
+- Un commit por cambio lógico (no batches gigantes de archivos no relacionados)
+- Descripción en español, presente, imperativo: "agrega hook useProductos" no "agregué"
+- Si el commit cierra un ítem del backlog, mencionarlo: "feat: hook useProductos — B-021"
+
+### 4. Flujo completo de una tarea
+
+```
+1. Verificar ítem en backlog → marcar "En progreso"
+2. git checkout -b feat/nombre-tarea
+3. Desarrollar con commits frecuentes y descriptivos
+4. npm run build && npm test  ← debe pasar antes del merge
+5. git checkout main && git merge feat/nombre-tarea
+6. Marcar ítem en backlog como "Completado"
+```
+
+---
+
 ## Commands
 
 ```bash
@@ -18,16 +74,33 @@ npm test         # vitest run — unit tests of business invariants
 
 There is no standalone lint script. `npm run build` runs TypeScript checking + Next.js lint; treat clean build + green tests as the verification bar. The `bash scripts/*.sh` artifact commands mentioned in Memory.md do not exist in this repo.
 
-## Architecture — read this before trusting Memory.md / AGENTS.md
+## Architecture — estado actual del proyecto
 
-The project docs (`.claude/Memory.md`, `AGENTS.md`) describe a Supabase + SSR-auth + server-actions backend. **None of that is wired up yet.** There is no Supabase client, no auth, and no server actions anywhere in `src/`. The Supabase/Zod/RHF packages are installed but the data layer is not built.
+### Estado real del store (leer antes de tocar cualquier cosa)
 
-What actually exists today is a **fully client-side prototype**:
+El store YA está conectado a Supabase, pero usa un **antipatrón JSONB**: cada entidad se guarda como `{ id, negocio_id, data: <objeto completo serializado> }`. El adaptador es `src/lib/supabase/cloud-state.ts` (`useCloudCollection` / `useCloudSingleton`).
 
-- **State lives entirely in [src/lib/store.tsx](src/lib/store.tsx)** — a single React Context (`StoreProvider` / `useStore`) holding products, clients, sales, stock movements, dispatches, expenses, reminders, users, and business settings in `useState`, seeded with hardcoded Spanish demo data. All CRUD mutates this in-memory state; **nothing persists across reload**. IDs come from `uuid`.
-- **The store is the single source of truth.** Cross-entity logic is centralized there — e.g. `completeSale` decrements product stock, logs `salida` stock movements, and bumps the client's `totalPurchases`/`lastPurchase` in one call. Mirror that pattern (mutate all affected slices together inside the store) rather than scattering side effects into pages.
-- **Every dashboard page is `"use client"`.** Despite the "Server Components by default" convention in the docs, the whole `(dashboard)` tree is client-rendered because it consumes `useStore`. `StoreProvider` wraps the tree in [src/app/(dashboard)/layout.tsx](<src/app/(dashboard)/layout.tsx>), so any new dashboard page can call `useStore()` directly.
-- **`src/app/page.tsx` redirects to `/dashboard`.** Real navigation is the sidebar in [src/components/ui/sidebar.tsx](src/components/ui/sidebar.tsx); its `NAV_ITEMS` array is the source of truth for routes — add an entry there when you add a module page.
+**Lo que existe y cómo funciona:**
+
+- **`src/lib/store.tsx`** — React Context global con `useStore()`. Carga 5 colecciones vía `useCloudCollection`: `products`, `sales`, `clientes`, `movements`, `despachos`. Más 2 singletons: `settings` y `categorias`. Todo el CRUD cross-entidad vive aquí (`registrarVenta` toca productos + movimientos + clientes + despachos a la vez).
+- **`src/lib/supabase/cloud-state.ts`** — El adaptador JSONB. Lee `.select('data')` en vez de columnas tipadas. Al mutar, hace `upsert({ id, negocio_id, data: objetoCompleto })`. **Este archivo desaparece en la migración.**
+- **`StoreProvider`** envuelve todo el `(dashboard)` layout. Sin él, ninguna página puede usar `useStore()`.
+- **`"use client"` en todo el dashboard** — porque consumen `useStore()`.
+
+### Estrategia de migración activa
+
+**NO** se mantiene `useStore()`. Se elimina junto con `cloud-state.ts`. La migración es:
+
+1. Por cada dominio: crear `src/hooks/useDominio.ts` con queries directas a columnas tipadas
+2. Actualizar las páginas del dominio para usar el hook nuevo (dejan de llamar `useStore()`)
+3. Borrar el slice correspondiente de `store.tsx`
+4. La lógica cross-entidad (stock al vender, etc.) migra a **triggers de BD**, no a los hooks
+
+Referencia completa: ver plan de migración en Notion (backlog ítems B-014 a B-028).
+
+### Módulos fuera del store central
+
+Algunos módulos (`/finanzas`, `/proveedores`, `/cierre-caja`, etc.) tienen su propia conexión a Supabase o están parcialmente implementados. Revisar cada uno antes de asumir que usa `useStore()`.
 
 ### Types & domain model
 
@@ -44,9 +117,18 @@ What actually exists today is a **fully client-side prototype**:
 - Forms use **React Hook Form + `zodResolver`** with a Zod schema defined inline at the top of the page/modal (see [productos/page.tsx](<src/app/(dashboard)/productos/page.tsx>) for the template: schema → `z.infer` type → modal component calling `useStore`'s `add*`/`update*`).
 - Locale helpers in [src/lib/format.ts](src/lib/format.ts): `clp()` (CLP currency, `es-CL`), `margin()` (price/cost %), `relativeDate()` (Spanish relative dates). The whole UI is Spanish (`lang="es-CL"`); keep user-facing strings in Spanish.
 
-## When wiring up the real backend
+## Cuando migres un módulo a BD
 
-If/when Supabase is actually integrated, the natural migration is to keep the `useStore()` API surface and swap the in-memory `useState` bodies for Supabase queries — so pages don't change. Update `.claude/Memory.md` once the stack actually matches its description.
+El patrón es siempre el mismo (ver backlog para el módulo específico):
+
+1. Crear `src/hooks/useDominio.ts` con `SELECT` de columnas tipadas (NO `select('data')`)
+2. La página llama `useDominio()` en vez de `useStore().campo`
+3. Borrar el slice del dominio de `store.tsx` (estado + funciones + mock si hubiera)
+4. Si el dominio tenía lógica cross-entidad en el store, verificar que el trigger de BD ya la cubre
+
+**Nunca usar `useCloudCollection` o `useCloudSingleton`** — son el patrón a eliminar.
+
+Update `.claude/Memory.md` cuando el stack real cambie significativamente.
 
 ## Next.js version caveat
 
@@ -69,3 +151,20 @@ When operating in auto mode, read the task and activate the most relevant skills
 | Create, improve, or test a skill | `/skill-creator` |
 
 **Rule**: Always read `.claude/Memory.md` at session start for project context. Update it when stack, modules, or key decisions change.
+
+---
+
+## Protocolo de Inicio de Sesión
+
+Antes de empezar cualquier tarea, ejecutar en orden:
+
+```
+1. Leer .claude/Memory.md  ← stack, módulos, decisiones técnicas
+2. Leer Notion: Prioridades de la Semana (38ab1f3a-efb5-8142-9d28-cbec657f0298)
+3. Leer Notion: Decisiones de Producto   (38ab1f3a-efb5-8144-b4e9-ed7659934f6b)
+4. Si la tarea toca reglas de negocio o clientes:
+   - Leer Notion: Reglas de Negocio     (38ab1f3a-efb5-81f9-839a-c127f48f39f1)
+   - Leer Notion: Feedback de Clientes  (38ab1f3a-efb5-812f-947a-f011f924e23b)
+```
+
+Estas páginas las mantiene el co-founder. Si hay decisiones nuevas que afecten el stack o la arquitectura, actualizar `.claude/Memory.md` después de leerlas.

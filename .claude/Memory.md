@@ -102,3 +102,20 @@ npm run start    # servidor producción
 bash scripts/init-artifact.sh <nombre>
 bash scripts/bundle-artifact.sh
 ```
+
+---
+
+## Contexto de Negocio — Notion (leer al iniciar sesión)
+
+Estas páginas las mantiene el co-founder con contexto de negocio actualizado.
+Leerlas vía MCP al inicio de cada sesión de trabajo.
+
+| Página | ID Notion |
+|---|---|
+| 🧠 Contexto para el Agente (raíz) | `38ab1f3a-efb5-818a-9ad3-c2d2beba857d` |
+| 📋 Reglas de Negocio | `38ab1f3a-efb5-81f9-839a-c127f48f39f1` |
+| 🎯 Decisiones de Producto | `38ab1f3a-efb5-8144-b4e9-ed7659934f6b` |
+| 💬 Feedback de Clientes | `38ab1f3a-efb5-812f-947a-f011f924e23b` |
+| 🗓️ Prioridades de la Semana | `38ab1f3a-efb5-8142-9d28-cbec657f0298` |
+
+**Protocolo:** Leer primero "Prioridades de la Semana" y "Decisiones de Producto". Leer las otras dos si la tarea involucra reglas de negocio o clientes.
