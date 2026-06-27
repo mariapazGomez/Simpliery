@@ -12,6 +12,7 @@ import { Icon } from '@/components/icon'
 import { Sidebar } from '@/components/shell/sidebar'
 import { NotifDrawer } from '@/components/notif-drawer'
 import { GlobalSearch } from '@/components/global-search'
+import { PerfilGate } from '@/components/perfil-gate'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { err: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -109,14 +110,16 @@ function AppShell({ children }: { children: ReactNode }) {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
-    <StoreProvider>
-      <FormatsProvider>
-        <FinanzasProvider>
-          <ErrorBoundary>
-            <AppShell>{children}</AppShell>
-          </ErrorBoundary>
-        </FinanzasProvider>
-      </FormatsProvider>
-    </StoreProvider>
+    <PerfilGate>
+      <StoreProvider>
+        <FormatsProvider>
+          <FinanzasProvider>
+            <ErrorBoundary>
+              <AppShell>{children}</AppShell>
+            </ErrorBoundary>
+          </FinanzasProvider>
+        </FormatsProvider>
+      </StoreProvider>
+    </PerfilGate>
   )
 }
