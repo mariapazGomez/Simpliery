@@ -51,6 +51,10 @@ Reglas:
 ### 4. Flujo completo de una tarea
 
 ```
+0. Sincronizar main antes de crear la rama:
+   git checkout main
+   git pull origin main
+
 1. Verificar ítem en backlog → marcar "En progreso"
 2. git checkout -b feat/nombre-tarea
 3. Desarrollar con commits frecuentes y descriptivos
