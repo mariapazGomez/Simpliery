@@ -810,64 +810,15 @@ END $$;
 
 -- ============================================================================
 --  16. Auto-provisión al registrar un usuario nuevo
---     (definida al final porque referencia todas las tablas anteriores)
+--
+--  ELIMINADO: la provisión (negocio + perfil + config + categorías + folios)
+--  se hace desde la app en src/lib/actions/provision.ts usando el admin client.
+--  Ejecutar en Supabase para limpiar si el trigger ya estaba instalado:
+--
+--    DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+--    DROP FUNCTION IF EXISTS public.handle_new_user();
+--
 -- ============================================================================
-
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE
-  nid UUID;
-  inv public.invitaciones%rowtype;
-BEGIN
-  SELECT * INTO inv
-  FROM public.invitaciones
-  WHERE lower(email) = lower(NEW.email) AND estado = 'pendiente'
-  ORDER BY created_at DESC
-  LIMIT 1;
-
-  IF inv.id IS NOT NULL THEN
-    INSERT INTO public.perfiles (id, negocio_id, nombre, email, rol)
-    VALUES (
-      NEW.id,
-      inv.negocio_id,
-      COALESCE(NEW.raw_user_meta_data->>'nombre', split_part(NEW.email, '@', 1)),
-      NEW.email,
-      inv.rol
-    );
-    UPDATE public.invitaciones SET estado = 'aceptada' WHERE id = inv.id;
-    RETURN NEW;
-  END IF;
-
-  INSERT INTO public.negocios (nombre) VALUES ('Mi negocio') RETURNING id INTO nid;
-
-  INSERT INTO public.perfiles (id, negocio_id, nombre, email, rol)
-  VALUES (
-    NEW.id,
-    nid,
-    COALESCE(NEW.raw_user_meta_data->>'nombre', split_part(NEW.email, '@', 1)),
-    NEW.email,
-    'admin'
-  );
-
-  INSERT INTO public.configuracion (negocio_id) VALUES (nid);
-
-  INSERT INTO public.categorias (negocio_id, nombre, orden) VALUES
-    (nid, 'Abarrotes', 1),
-    (nid, 'Bebidas',   2),
-    (nid, 'Limpieza',  3),
-    (nid, 'Otros',     4);
-
-  INSERT INTO public.folios (negocio_id, ultimo) VALUES (nid, 0);
-
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 
 -- ============================================================================

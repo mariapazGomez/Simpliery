@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Icon } from '@/components/icon'
+import { provisionNegocio } from '@/lib/actions/provision'
 
 type Mode = 'login' | 'signup'
 
@@ -54,6 +55,7 @@ export default function LoginPage() {
           setMode('login')
           return
         }
+        await provisionNegocio({ nombre: nombre.trim() })
         router.replace('/dashboard')
         router.refresh()
       } else {
