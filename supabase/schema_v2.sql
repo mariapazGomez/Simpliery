@@ -193,6 +193,16 @@ END;
 $$;
 
 
+-- Descuenta stock en una sola sentencia SQL (sin TOCTOU). Llamado desde useVentas.
+CREATE OR REPLACE FUNCTION public.venta_descontar_stock(
+  p_negocio_id UUID, p_producto_id UUID, p_qty NUMERIC
+) RETURNS void LANGUAGE sql SECURITY INVOKER AS $$
+  UPDATE public.productos SET stock = stock - p_qty
+  WHERE id = p_producto_id AND negocio_id = p_negocio_id;
+$$;
+GRANT EXECUTE ON FUNCTION public.venta_descontar_stock(UUID, UUID, NUMERIC) TO authenticated;
+
+
 -- ============================================================================
 --  6. Catálogo
 -- ============================================================================
