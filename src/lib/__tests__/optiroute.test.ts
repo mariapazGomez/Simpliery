@@ -3,14 +3,15 @@
 // de productos y precios, y los estados de OptiRoute deben mapear a los locales.
 import { describe, it, expect } from 'vitest'
 import { despachoToPedido, optirouteStatusToEstado } from '@/lib/optiroute'
-import type { Despacho } from '@/types'
+import type { DespachoDBRow } from '@/hooks/useDespachos'
 
-const mkDespacho = (p: Partial<Despacho> = {}): Despacho => ({
+const mkDespacho = (p: Partial<DespachoDBRow> = {}): DespachoDBRow => ({
   id: 'desp_b46224',
-  saleId: 'b46224',
+  negocio_id: 'neg_test',
+  venta_id: 'b46224',
   boleta: 46224,
-  fecha: new Date(),
-  cliente: 'Lukas Garcia',
+  fecha: new Date().toISOString(),
+  cliente_nombre: 'Lukas Garcia',
   telefono: '9 9519 4321',
   correo: 'cliente@mail.cl',
   direccion: 'Av. Borgoño 14580',
@@ -20,11 +21,16 @@ const mkDespacho = (p: Partial<Despacho> = {}): Despacho => ({
   repartidor: 'Sin asignar',
   estado: 'pendiente',
   items: [
-    { productId: 1, name: 'Huevo Docena', cat: 'Huevos', qty: 2, price: 7000, cost: 5000 },
-    { productId: 2, name: 'Almendras 250g', cat: 'Frutos secos', qty: 1, price: 4500, cost: 3000 },
+    { id: 'i1', nombre: 'Huevo Docena', qty: 2, precio: 7000, costo: 5000, producto_id: null },
+    { id: 'i2', nombre: 'Almendras 250g', qty: 1, precio: 4500, costo: 3000, producto_id: null },
   ],
   total: 18500,
-  method: 'Transferencia',
+  metodo_pago: 'Transferencia',
+  optiroute_id: null,
+  tracking_url: null,
+  tracking_code: null,
+  optiroute_status: null,
+  enviado_en: null,
   ...p,
 })
 
@@ -51,12 +57,12 @@ describe('despachoToPedido — lo que viaja a OptiRoute', () => {
   })
 
   it('limpia comas dentro del nombre del producto para no romper el separador', () => {
-    const info = despachoToPedido(mkDespacho({ items: [{ productId: 9, name: 'Pack surtido, especial', cat: 'Otros', qty: 1, price: 5000, cost: 3000 }], total: 5000 })).address.address_more_info || ''
+    const info = despachoToPedido(mkDespacho({ items: [{ id: 'i9', nombre: 'Pack surtido, especial', qty: 1, precio: 5000, costo: 3000, producto_id: null }], total: 5000 })).address.address_more_info || ''
     expect(info).toBe('1xPack surtido especial,5000')
   })
 
   it('pedido grande: incluye TODOS los productos y el total al final (no recorta)', () => {
-    const muchos = Array.from({ length: 12 }, (_, i) => ({ productId: i, name: `Producto ${i}`, cat: 'Otros', qty: 2, price: 1000, cost: 600 }))
+    const muchos = Array.from({ length: 12 }, (_, i) => ({ id: String(i), nombre: `Producto ${i}`, qty: 2, precio: 1000, costo: 600, producto_id: null }))
     const info = despachoToPedido(mkDespacho({ items: muchos, total: 24000 })).address.address_more_info || ''
     expect((info.match(/xProducto/g) || []).length).toBe(12) // están los 12
     expect(info.endsWith(',24000')).toBe(true)
@@ -69,15 +75,20 @@ describe('despachoToPedido — lo que viaja a OptiRoute', () => {
   })
 
   it('omite los campos opcionales vacíos (correo/depto/teléfono) en vez de mandar ""', () => {
-    const ped = despachoToPedido(mkDespacho({ correo: '', depto: undefined, telefono: '' }))
+    const ped = despachoToPedido(mkDespacho({ correo: '', depto: null, telefono: '' }))
     expect(ped.customer).not.toHaveProperty('email')
     expect(ped.customer).not.toHaveProperty('phone_number')
     expect(ped.address).not.toHaveProperty('apartment_number')
   })
 
   it('demand_a mínimo 1 aunque la venta sea fraccionada (granel)', () => {
-    const ped = despachoToPedido(mkDespacho({ items: [{ productId: 3, name: 'Nueces · 350 g', cat: 'Frutos secos', qty: 1, price: 4200, cost: 2800, formatId: 'granel:1', baseUnitsPerItem: 0.35 }] }))
+    const ped = despachoToPedido(mkDespacho({ items: [{ id: 'i3', nombre: 'Nueces · 350 g', qty: 1, precio: 4200, costo: 2800, producto_id: null }] }))
     expect(ped.customer.demand_a).toBeGreaterThanOrEqual(1)
+  })
+
+  it('usa el id del despacho como referencia cuando no hay venta_id', () => {
+    const ped = despachoToPedido(mkDespacho({ venta_id: null }))
+    expect(ped.reference).toBe('desp_b46224')
   })
 })
 

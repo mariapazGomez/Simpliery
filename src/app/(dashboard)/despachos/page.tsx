@@ -1,20 +1,19 @@
 'use client'
 
 // ---------- Despachos: pedidos persistentes + integración OptiRoute ----------
-import { useEffect, useRef, useState } from 'react'
-import { useStore } from '@/lib/store'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFinanzas } from '@/lib/finanzas-store'
 import { fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, Mini } from '@/components/ui'
 import { DISPATCH_STATUSES, DISPATCH_STATUS_COLOR } from '@/types'
-import type { Despacho, EstadoDespacho } from '@/types'
+import type { EstadoDespacho } from '@/types'
 import { despachoToPedido, optirouteStatusToEstado } from '@/lib/optiroute'
 import type { EnvioResultado } from '@/lib/optiroute'
+import { useDespachos, type DespachoDBRow, type DespachoUpdatePatch } from '@/hooks/useDespachos'
 
 type Estado = EstadoDespacho
-/** Despacho + callback de UI usado en la vista del repartidor. */
-type Pedido = Despacho & { _onEntregado?: (id: string) => void }
+type Pedido = DespachoDBRow & { _onEntregado?: (id: string) => void }
 
 const ESTADO_CFG: Record<Estado, { label: string; bg: string; fg: string; icon: string }> = Object.fromEntries(
   DISPATCH_STATUSES.map((s) => [s.value, { label: s.label, icon: s.icon, ...DISPATCH_STATUS_COLOR[s.value] }]),
@@ -30,52 +29,55 @@ function EstadoChip({ estado, size = 'sm' }: { estado: Estado; size?: 'sm' | 'lg
   )
 }
 
-/* ── Detalle pedido modal ─────────────────────────────── */
-function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDelete, onDeleteVenta }: { pedido: Pedido; onClose: () => void; onUpdate: (id: string, patch: Partial<Despacho>) => void; onEnviar: (d: Pedido) => void; onActualizar: (d: Pedido) => void; onDelete: (id: string) => void; onDeleteVenta: (saleId: string) => void }) {
-  const { despachos } = useStore()
+function PedidoModal({ pedido, despachos, onClose, onUpdate, onEnviar, onActualizar, onDelete, onDeleteVenta }: {
+  pedido: Pedido
+  despachos: DespachoDBRow[]
+  onClose: () => void
+  onUpdate: (id: string, patch: DespachoUpdatePatch) => void
+  onEnviar: (d: Pedido) => void
+  onActualizar: (d: Pedido) => void
+  onDelete: (id: string) => void
+  onDeleteVenta: (ventaId: string) => void
+}) {
   const { nomina } = useFinanzas()
   const [estado, setEstado] = useState<Estado>(pedido.estado)
   const [obs, setObs] = useState(pedido.nota || '')
-  const [rep, setRep] = useState(pedido.repartidor)
+  const [rep, setRep] = useState(pedido.repartidor || 'Sin asignar')
   const [confirmDel, setConfirmDel] = useState(false)
-  // Datos de entrega editables (se espejan a la venta al guardar).
-  const [cliente, setCliente] = useState(pedido.cliente)
+  const [cliente, setCliente] = useState(pedido.cliente_nombre)
   const [telefono, setTelefono] = useState(pedido.telefono || '')
   const [correo, setCorreo] = useState(pedido.correo || '')
   const [direccion, setDireccion] = useState(pedido.direccion || '')
   const [depto, setDepto] = useState(pedido.depto || '')
   const [ciudad, setCiudad] = useState(pedido.ciudad || '')
-  // Repartidores REALES: tu nómina + los ya usados en otros despachos (escribe uno nuevo si quieres).
-  const repartidores = [...new Set(['Sin asignar', ...nomina.map((n) => n.nombre), ...despachos.map((d) => d.repartidor)])].filter(Boolean)
+  const repartidores = [...new Set(['Sin asignar', ...nomina.map((n) => n.nombre), ...despachos.map((d) => d.repartidor)])].filter(Boolean) as string[]
   const dirCompleta = direccion + (depto ? ', ' + depto : '') + (ciudad ? ', ' + ciudad : '')
-  const waUrl = `https://wa.me/${telefono.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${cliente.split(' ')[0]}, te escribimos para coordinar tu entrega.${pedido.trackingUrl ? ' Puedes seguir tu pedido aquí: ' + pedido.trackingUrl : ''}`)}`
+  const waUrl = `https://wa.me/${telefono.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${cliente.split(' ')[0]}, te escribimos para coordinar tu entrega.${pedido.tracking_url ? ' Puedes seguir tu pedido aquí: ' + pedido.tracking_url : ''}`)}`
   const mapsUrl = `https://maps.google.com/?q=${encodeURIComponent(dirCompleta)}`
   const guardar = () => {
     onUpdate(pedido.id, {
       estado, nota: obs, repartidor: rep.trim() || 'Sin asignar',
-      cliente: cliente.trim(), telefono: telefono.trim(), correo: correo.trim(),
-      direccion: direccion.trim(), depto: depto.trim() || undefined, ciudad: ciudad.trim(),
+      cliente_nombre: cliente.trim(), telefono: telefono.trim(), correo: correo.trim(),
+      direccion: direccion.trim(), depto: depto.trim() || null, ciudad: ciudad.trim(),
     })
     onClose()
   }
-  // Borrar pide elegir: anular la venta completa (repone stock, saca de caja/deuda
-  // y borra la boleta) o quitar solo el reparto dejando la venta registrada.
   if (confirmDel) {
     return (
       <Modal
         title={`Eliminar despacho · boleta #${pedido.boleta}`}
-        sub={pedido.cliente}
+        sub={pedido.cliente_nombre}
         onClose={() => setConfirmDel(false)}
         width={470}
         footer={<button className="btn btn-ghost" onClick={() => setConfirmDel(false)}>Volver</button>}
       >
         <div style={{ display: 'grid', gap: 12 }}>
-          {pedido.optirouteId && (
+          {pedido.optiroute_id && (
             <div style={{ fontSize: 12.5, fontWeight: 700, color: 'oklch(0.50 0.10 70)', background: 'var(--warn-tint)', borderRadius: 10, padding: '10px 12px', lineHeight: 1.5 }}>
               <Icon name="truck" size={13} /> Ya fue enviado a OptiRoute: cancélalo también a mano allá, esto no lo toca.
             </div>
           )}
-          <button className="btn" style={{ display: 'block', textAlign: 'left', height: 'auto', padding: '12px 14px', background: 'var(--danger-tint)', color: 'var(--danger)', border: '1px solid var(--danger-tint)' }} onClick={() => { onDeleteVenta(pedido.saleId); onClose() }}>
+          <button className="btn" style={{ display: 'block', textAlign: 'left', height: 'auto', padding: '12px 14px', background: 'var(--danger-tint)', color: 'var(--danger)', border: '1px solid var(--danger-tint)' }} onClick={() => { if (pedido.venta_id) onDeleteVenta(pedido.venta_id); onClose() }}>
             <div style={{ fontWeight: 800, fontSize: 14, display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="trash" size={15} />Anular la venta completa</div>
             <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 4, lineHeight: 1.45 }}>Borra la boleta #{pedido.boleta}, repone el stock y la saca de caja/deuda. Úsalo si el pedido entero se cae.</div>
           </button>
@@ -90,7 +92,7 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDele
   return (
     <Modal
       title={'Pedido #' + pedido.boleta}
-      sub={pedido.cliente + (pedido.ciudad ? ' · ' + pedido.ciudad : '')}
+      sub={pedido.cliente_nombre + (pedido.ciudad ? ' · ' + pedido.ciudad : '')}
       onClose={onClose}
       width={560}
       footer={
@@ -109,17 +111,17 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDele
       <div style={{ display: 'grid', gap: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Mini label="Total" value={fmtCLP(pedido.total)} />
-          <Mini label="Método" value={pedido.method} />
+          <Mini label="Método" value={pedido.metodo_pago || '—'} />
         </div>
 
         {/* OptiRoute */}
         <div style={{ padding: '12px 14px', background: 'var(--surface-3)', borderRadius: 11 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 8 }}>OptiRoute</div>
-          {pedido.optirouteId ? (
+          {pedido.optiroute_id ? (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span className="chip chip-ok" style={{ fontSize: 12 }}><Icon name="check" size={12} />Enviado a OptiRoute</span>
-              {pedido.trackingUrl && (
-                <a href={pedido.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+              {pedido.tracking_url && (
+                <a href={pedido.tracking_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
                   <button className="btn btn-ghost" style={{ fontSize: 13 }}><Icon name="truck" size={15} />Ver seguimiento</button>
                 </a>
               )}
@@ -171,15 +173,15 @@ function PedidoModal({ pedido, onClose, onUpdate, onEnviar, onActualizar, onDele
               <button className="btn btn-soft" style={{ fontSize: 13 }}><Icon name="phone" size={15} />WhatsApp</button>
             </a>
           </div>
-          {pedido.optirouteId && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>Editar aquí no actualiza OptiRoute (ya fue enviado): el original sigue allá.</div>}
+          {pedido.optiroute_id && <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>Editar aquí no actualiza OptiRoute (ya fue enviado): el original sigue allá.</div>}
         </div>
         {/* Productos */}
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginBottom: 7 }}>Productos del pedido <span style={{ fontWeight: 600, color: 'var(--ink-4, var(--ink-3))' }}>· para cambiarlos, edita la venta</span></div>
           {pedido.items.map((it, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--line)', fontSize: 14 }}>
-              <span style={{ fontWeight: 600 }}>{it.name} <span className="tnum" style={{ color: 'var(--ink-3)' }}>×{it.qty}</span></span>
-              <span className="tnum" style={{ fontWeight: 800 }}>{fmtCLP(it.price * it.qty)}</span>
+              <span style={{ fontWeight: 600 }}>{it.nombre} <span className="tnum" style={{ color: 'var(--ink-3)' }}>×{it.qty}</span></span>
+              <span className="tnum" style={{ fontWeight: 800 }}>{fmtCLP(it.precio * it.qty)}</span>
             </div>
           ))}
         </div>
@@ -249,7 +251,7 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
 
           {orden.map((p, i) => {
             const dir = dirDe(p)
-            const waUrl = `https://wa.me/${(p.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${p.cliente.split(' ')[0]}, voy en camino con tu pedido.`)}`
+            const waUrl = `https://wa.me/${(p.telefono || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${p.cliente_nombre.split(' ')[0]}, voy en camino con tu pedido.`)}`
             const mapsOpenUrl = `https://maps.google.com/?q=${encodeURIComponent(dir)}`
             const mapsEmbedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(dir)}&output=embed&iwloc=near&z=15`
             const mapOpen = expandedMap[p.id]
@@ -264,7 +266,7 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
                   </div>
                   <div style={{ width: 36, height: 36, borderRadius: 11, background: 'var(--primary)', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{i + 1}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 15.5 }}>{p.cliente}</div>
+                    <div style={{ fontWeight: 800, fontSize: 15.5 }}>{p.cliente_nombre}</div>
                     <div style={{ color: 'var(--ink-2)', fontWeight: 600, marginTop: 1, fontSize: 13.5 }}>{dir}</div>
                     {p.nota && (
                       <div style={{ fontSize: 12.5, color: 'oklch(0.50 0.10 70)', fontWeight: 700, marginTop: 4, display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -272,7 +274,7 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
                         Nota: {p.nota}
                       </div>
                     )}
-                    <div className="tnum" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginTop: 3 }}>{p.items.length} productos · {fmtCLP(p.total)} · {p.method}</div>
+                    <div className="tnum" style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', marginTop: 3 }}>{p.items.length} productos · {fmtCLP(p.total)} · {p.metodo_pago || ''}</div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                     <EstadoChip estado={p.estado} />
@@ -299,8 +301,8 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
                   <a href={mapsOpenUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', flex: 1 }}>
                     <button className="btn btn-ghost" style={{ width: '100%', fontSize: 13 }}><Icon name="truck" size={15} />Maps</button>
                   </a>
-                  {p.trackingUrl && (
-                    <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', flex: 1 }}>
+                  {p.tracking_url && (
+                    <a href={p.tracking_url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', flex: 1 }}>
                       <button className="btn btn-ghost" style={{ width: '100%', fontSize: 13 }}><Icon name="truck" size={15} />Seguimiento</button>
                     </a>
                   )}
@@ -323,24 +325,27 @@ function VistaRuta({ pedidos, onBack }: { pedidos: Pedido[]; onBack: () => void 
 
 /* ── Main Despachos screen ───────────────────────────── */
 export default function DespachosPage() {
-  const { despachos, updateDespacho, deleteDespacho, deleteSale, toast } = useStore()
+  const { despachos, actualizar, eliminar, anularVenta } = useDespachos()
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const toast = useCallback((msg: string) => {
+    setToastMsg(msg)
+    setTimeout(() => setToastMsg(null), 3500)
+  }, [])
   const [filtroEstado, setFiltroEstado] = useState('todos')
   const [filtroCiudad, setFiltroCiudad] = useState('Todas')
-  const [filtroEnvio, setFiltroEnvio] = useState('todos') // todos | enviados | no_enviados
+  const [filtroEnvio, setFiltroEnvio] = useState('todos')
   const [selected, setSelected] = useState<Pedido | null>(null)
   const [vistaRuta, setVistaRuta] = useState(false)
   const [sel, setSel] = useState<Set<string>>(new Set())
   const [enviando, setEnviando] = useState(false)
-
-  const updatePedido = (id: string, patch: Partial<Despacho>) => updateDespacho(id, patch)
 
   const cities = ['Todas', ...[...new Set(despachos.map((p) => p.ciudad).filter(Boolean))].sort()]
 
   let list = despachos as Pedido[]
   if (filtroEstado !== 'todos') list = list.filter((p) => p.estado === filtroEstado)
   if (filtroCiudad !== 'Todas') list = list.filter((p) => p.ciudad === filtroCiudad)
-  if (filtroEnvio === 'enviados') list = list.filter((p) => p.optirouteId)
-  if (filtroEnvio === 'no_enviados') list = list.filter((p) => !p.optirouteId)
+  if (filtroEnvio === 'enviados') list = list.filter((p) => p.optiroute_id)
+  if (filtroEnvio === 'no_enviados') list = list.filter((p) => !p.optiroute_id)
 
   const counts: Record<string, number> = {
     todos: despachos.length,
@@ -349,15 +354,15 @@ export default function DespachosPage() {
     entregado: despachos.filter((p) => p.estado === 'entregado').length,
     no_entregado: despachos.filter((p) => p.estado === 'no_entregado').length,
   }
-  const noEnviados = despachos.filter((p) => !p.optirouteId).length
+  const noEnviados = despachos.filter((p) => !p.optiroute_id).length
 
   const pedidosParaRuta: Pedido[] = despachos
     .filter((p) => p.estado === 'pendiente' || p.estado === 'en_ruta')
-    .map((p) => ({ ...p, _onEntregado: (id: string) => { updateDespacho(id, { estado: 'entregado' }); toast('¡Entregado! ' + p.cliente) } }))
+    .map((p) => ({ ...p, _onEntregado: (id: string) => { actualizar(id, { estado: 'entregado' }).catch(console.error); toast('¡Entregado! ' + p.cliente_nombre) } }))
 
   /* ── Acciones OptiRoute ── */
   const enviarASeleccionados = async (ids: string[]) => {
-    const aEnviar = despachos.filter((d) => ids.includes(d.id) && !d.optirouteId)
+    const aEnviar = despachos.filter((d) => ids.includes(d.id) && !d.optiroute_id)
     if (!aEnviar.length) { toast('Esos despachos ya fueron enviados'); return }
     setEnviando(true)
     try {
@@ -368,9 +373,16 @@ export default function DespachosPage() {
       const byRef = new Map(results.map((r) => [r.reference, r]))
       let ok = 0
       for (const d of aEnviar) {
-        const r = byRef.get(d.saleId)
+        const r = byRef.get(d.venta_id || d.id)
         if (r && !r.error) {
-          updateDespacho(d.id, { optirouteId: r.optirouteId, trackingUrl: r.trackingUrl, trackingCode: r.trackingCode, optirouteStatus: r.status, enviadoEn: new Date(), estado: optirouteStatusToEstado(r.status) })
+          actualizar(d.id, {
+            optiroute_id: r.optirouteId,
+            tracking_url: r.trackingUrl,
+            tracking_code: r.trackingCode,
+            optiroute_status: r.status,
+            enviado_en: new Date().toISOString(),
+            estado: optirouteStatusToEstado(r.status),
+          }).catch(console.error)
           ok++
         }
       }
@@ -390,17 +402,25 @@ export default function DespachosPage() {
   }
 
   const actualizarEstados = async () => {
-    const enviados = despachos.filter((d) => d.optirouteId)
+    const enviados = despachos.filter((d) => d.optiroute_id)
     if (!enviados.length) { toast('No hay despachos enviados a OptiRoute'); return }
     setEnviando(true)
     let n = 0
     for (const d of enviados) {
       try {
-        const res = await fetch(`/api/optiroute/pedido?id=${encodeURIComponent(d.optirouteId!)}`)
+        const res = await fetch(`/api/optiroute/pedido?id=${encodeURIComponent(d.optiroute_id!)}`)
         if (res.status === 400) { toast('Conecta OptiRoute primero'); break }
         if (res.ok) {
           const j = (await res.json()) as { status?: number; trackingUrl?: string; trackingCode?: string }
-          if (j.status != null) { updateDespacho(d.id, { optirouteStatus: j.status, estado: optirouteStatusToEstado(j.status), trackingUrl: j.trackingUrl ?? d.trackingUrl, trackingCode: j.trackingCode ?? d.trackingCode }); n++ }
+          if (j.status != null) {
+            actualizar(d.id, {
+              optiroute_status: j.status,
+              estado: optirouteStatusToEstado(j.status),
+              tracking_url: j.trackingUrl ?? d.tracking_url,
+              tracking_code: j.trackingCode ?? d.tracking_code,
+            }).catch(console.error)
+            n++
+          }
         }
       } catch { /* ignorar fallo individual */ }
     }
@@ -409,7 +429,7 @@ export default function DespachosPage() {
   }
 
   const toggleSel = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  const seleccionablesVisibles = list.filter((p) => !p.optirouteId).map((p) => p.id)
+  const seleccionablesVisibles = list.filter((p) => !p.optiroute_id).map((p) => p.id)
   const allVisibleSelected = seleccionablesVisibles.length > 0 && seleccionablesVisibles.every((id) => sel.has(id))
   const toggleAllVisible = () => setSel((s) => { const n = new Set(s); if (allVisibleSelected) seleccionablesVisibles.forEach((id) => n.delete(id)); else seleccionablesVisibles.forEach((id) => n.add(id)); return n })
 
@@ -503,11 +523,11 @@ export default function DespachosPage() {
                 {list.map((p) => (
                   <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(p)} onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-3)')} onMouseLeave={(e) => (e.currentTarget.style.background = '')}>
                     <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                      {!p.optirouteId && <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} title="Marcar para enviar a OptiRoute" style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }} />}
+                      {!p.optiroute_id && <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggleSel(p.id)} title="Marcar para enviar a OptiRoute" style={{ accentColor: 'var(--primary)', width: 18, height: 18, cursor: 'pointer' }} />}
                     </td>
                     <td className="tnum" style={{ fontWeight: 700, color: 'var(--ink-2)' }}># {p.boleta}</td>
                     <td>
-                      <div style={{ fontWeight: 700 }}>{p.cliente}</div>
+                      <div style={{ fontWeight: 700 }}>{p.cliente_nombre}</div>
                       <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>{p.telefono}</div>
                     </td>
                     <td style={{ color: 'var(--ink-2)', fontWeight: 600, maxWidth: 200 }}>
@@ -518,9 +538,9 @@ export default function DespachosPage() {
                     <td className="num tnum" style={{ fontWeight: 800 }}>{fmtCLP(p.total)}</td>
                     <td><EstadoChip estado={p.estado} /></td>
                     <td>
-                      {p.optirouteId ? (
-                        p.trackingUrl ? (
-                          <a href={p.trackingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--primary-700)', fontWeight: 700, fontSize: 12.5, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {p.optiroute_id ? (
+                        p.tracking_url ? (
+                          <a href={p.tracking_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: 'var(--primary-700)', fontWeight: 700, fontSize: 12.5, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <Icon name="truck" size={13} />Seguir
                           </a>
                         ) : (
@@ -555,7 +575,25 @@ export default function DespachosPage() {
         </div>
       )}
 
-      {selected && <PedidoModal pedido={selected} onClose={() => setSelected(null)} onUpdate={updatePedido} onEnviar={(d) => enviarASeleccionados([d.id])} onActualizar={() => actualizarEstados()} onDelete={deleteDespacho} onDeleteVenta={deleteSale} />}
+      {/* Toast local */}
+      {toastMsg && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, padding: '11px 20px', background: 'var(--ink)', color: 'var(--surface)', borderRadius: 12, fontWeight: 700, fontSize: 14, boxShadow: 'var(--sh-3)', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          {toastMsg}
+        </div>
+      )}
+
+      {selected && (
+        <PedidoModal
+          pedido={selected}
+          despachos={despachos}
+          onClose={() => setSelected(null)}
+          onUpdate={(id, patch) => actualizar(id, patch).catch(console.error)}
+          onEnviar={(d) => enviarASeleccionados([d.id])}
+          onActualizar={() => actualizarEstados()}
+          onDelete={(id) => eliminar(id).catch(console.error)}
+          onDeleteVenta={(ventaId) => anularVenta(ventaId).catch(console.error)}
+        />
+      )}
     </div>
   )
 }

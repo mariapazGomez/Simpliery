@@ -1,5 +1,6 @@
 // ---------- Helpers OptiRoute (puros, sin token — el token vive en el servidor) ----------
-import type { Despacho, EstadoDespacho } from '@/types'
+import type { EstadoDespacho } from '@/types'
+import type { DespachoDBRow } from '@/hooks/useDespachos'
 
 /** "Pedido de entrada" de OptiRoute construido desde un Despacho.
  *  OJO: NO enviar `custom_fields` — el manual lo describe como "objeto", pero la
@@ -17,7 +18,7 @@ export interface PedidoOptiRoute {
  *  OptiRoute se pueda partir con "Texto en columnas": cada ítem "Nx Producto" en
  *  su celda y el total (número) al final. Las comas dentro de los nombres se
  *  limpian para no romper el separador. `demand_a` lleva los bultos. */
-export function despachoToPedido(d: Despacho): PedidoOptiRoute {
+export function despachoToPedido(d: DespachoDBRow): PedidoOptiRoute {
   const tel = (d.telefono || '').replace(/\s/g, '')
   const limpio = (s: string) => s.replace(/,/g, ' ').replace(/\s+/g, ' ').trim()
   const totalStr = String(Math.round(d.total))
@@ -25,13 +26,13 @@ export function despachoToPedido(d: Despacho): PedidoOptiRoute {
   // que quepa en el campo de OptiRoute (sin espacio tras la coma ni tras el "x";
   // se conservan los espacios DENTRO del nombre para poder leerlo). Separador por
   // comas para "Texto en columnas". Solo el total del pedido, sin valor unitario.
-  const detalle = d.items.map((it) => `${it.qty}x${limpio(it.name)}`).join(',')
+  const detalle = d.items.map((it) => `${it.qty}x${limpio(it.nombre)}`).join(',')
   const masInfo = `${detalle},${totalStr}`
   const bultos = Math.max(1, Math.round(d.items.reduce((a, it) => a + it.qty, 0)))
   return {
-    reference: d.saleId,
+    reference: d.venta_id || d.id,
     customer: {
-      name: d.cliente,
+      name: d.cliente_nombre,
       ...(tel ? { phone_number: tel } : {}),
       ...(d.correo ? { email: d.correo } : {}),
       demand_a: bultos,
