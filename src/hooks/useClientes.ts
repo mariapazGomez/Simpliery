@@ -14,7 +14,10 @@ export interface ClienteDB {
   depto: string | null
   nota: string | null
   activo: boolean
+  created_at: string
 }
+
+export type ClientePatch = Partial<Pick<ClienteDB, 'nombre' | 'telefono' | 'correo' | 'ciudad' | 'direccion' | 'depto' | 'nota'>>
 
 export function useClientes() {
   const [clientes, setClientes] = useState<ClienteDB[]>([])
@@ -60,5 +63,31 @@ export function useClientes() {
     return nuevo
   }, [negocioId])
 
-  return { clientes, loading, agregar }
+  const actualizar = useCallback(async (id: string, patch: ClientePatch) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('clientes').update(patch).eq('id', id)
+    if (error) throw error
+    setClientes(cs => cs.map(c => c.id === id ? { ...c, ...patch } : c))
+  }, [])
+
+  const eliminar = useCallback(async (id: string) => {
+    const supabase = createClient()
+    const { error } = await supabase.from('clientes').update({ activo: false }).eq('id', id)
+    if (error) throw error
+    setClientes(cs => cs.filter(c => c.id !== id))
+  }, [])
+
+  const importar = useCallback(async (rows: Pick<ClienteDB, 'nombre' | 'telefono' | 'correo' | 'ciudad' | 'direccion' | 'depto'>[]) => {
+    if (!negocioId) throw new Error('Negocio no disponible')
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('clientes')
+      .insert(rows.map(r => ({ ...r, negocio_id: negocioId, activo: true, nota: '' })))
+      .select('*')
+    if (error) throw error
+    const nuevos = (data ?? []) as ClienteDB[]
+    setClientes(cs => [...nuevos, ...cs])
+  }, [negocioId])
+
+  return { clientes, loading, agregar, actualizar, eliminar, importar }
 }

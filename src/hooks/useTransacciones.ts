@@ -265,5 +265,25 @@ export function useTransacciones() {
     }))
   }, [negocioId, ventas])
 
-  return { ventas, loading, anular, actualizar }
+  const saldar = useCallback(async (ventaId: string, monto: number, metodo: string) => {
+    if (!negocioId) return
+    const supabase = createClient()
+    await supabase.from('venta_pagos').insert({ negocio_id: negocioId, venta_id: ventaId, monto, metodo })
+    const venta = ventas.find(v => v.id === ventaId)
+    if (!venta) return
+    const nuevoPendiente = Math.max(0, venta.monto_pendiente - monto)
+    const pagado = nuevoPendiente <= 0
+    await supabase.from('ventas').update({ monto_pendiente: nuevoPendiente, pagado }).eq('id', ventaId)
+    setVentas(vs => vs.map(v => {
+      if (v.id !== ventaId) return v
+      return {
+        ...v,
+        monto_pendiente: nuevoPendiente,
+        pagado,
+        pagos: [...v.pagos, { id: crypto.randomUUID(), monto, metodo, created_at: new Date().toISOString() }],
+      }
+    }))
+  }, [negocioId, ventas])
+
+  return { ventas, loading, anular, actualizar, saldar }
 }
