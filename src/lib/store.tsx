@@ -244,13 +244,13 @@ export function useStore(): StoreValue {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { negocioId, rol } = usePerfil()
-  const [products, setProducts, rdyProd] = useCloudCollection<Product>('productos', negocioId)
-  const [sales, setSales, rdySales] = useCloudCollection<Sale>('ventas', negocioId)
-  const [clientes, setClientes, rdyCli] = useCloudCollection<Cliente>('clientes', negocioId)
-  const [movements, setMovements, rdyMov] = useCloudCollection<Movement>('movimientos', negocioId)
-  const [despachos, setDespachos, rdyDesp] = useCloudCollection<Despacho>('despachos', negocioId)
+  const [products, setProducts] = useState<Product[]>([])
+  const [sales, setSales] = useState<Sale[]>([])
+  const [clientes, setClientes] = useState<Cliente[]>([])
+  const [movements, setMovements] = useState<Movement[]>([])
+  const [despachos, setDespachos] = useState<Despacho[]>([])
   const [settings, setSettings, rdySet] = useCloudSingleton<Settings>('configuracion', 'data', negocioId, DEFAULT_SETTINGS)
-  const [categorias, setCategorias, rdyCat] = useCloudSingleton<string[]>('categorias', 'lista', negocioId, [])
+  const [categorias, setCategorias] = useState<string[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
   const toast = useCallback((msg: string, icon = 'check') => {
     const id = Math.random().toString(36).slice(2)
@@ -595,11 +595,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Normaliza UNA vez las unidades mal cargadas (ej. "250g", "x12", "500g") → "Unidad".
   // Idempotente: una vez corregidas, vuelve a salir sin tocar nada.
   useEffect(() => {
-    if (!rdyProd) return
     const valida = (u: string) => (PRODUCT_UNITS as readonly string[]).includes(u)
     if (products.every((p) => valida(p.unit))) return
     setProducts((ps) => ps.map((p) => (valida(p.unit) ? p : { ...p, unit: 'Unidad' })))
-  }, [rdyProd, products, setProducts])
+  }, [products, setProducts])
 
   // Memoizamos el value: así un cambio de `toasts` (un aviso aparece/desaparece)
   // NO recrea el objeto ni re-renderiza a todos los que usan useStore(). El value
@@ -623,7 +622,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  const cargando = !negocioId || !rdyProd || !rdySales || !rdyCli || !rdyMov || !rdyDesp || !rdySet || !rdyCat
+  const cargando = !negocioId || !rdySet
   if (cargando) return <PantallaCargando />
 
   return (
