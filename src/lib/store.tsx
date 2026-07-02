@@ -242,6 +242,53 @@ export function useStore(): StoreValue {
   return ctx
 }
 
+// Mappers legacy: leen del nuevo schema y producen los tipos viejos para páginas no migradas
+function mapVentaLegacy(raw: Record<string, unknown>): Sale {
+  const items = (raw.venta_items as Record<string, unknown>[] | null) ?? []
+  const pagos  = (raw.venta_pagos  as Record<string, unknown>[] | null) ?? []
+  const snap   = raw.cliente_snapshot as Record<string, unknown> | null
+  return {
+    id:             raw.id as string,
+    boleta:         Number(raw.boleta),
+    date:           new Date(raw.created_at as string),
+    method:         (raw.metodo_pago as string) ?? '',
+    total:          Number(raw.total)    || 0,
+    cost:           Number(raw.costo)    || 0,
+    profit:         Number(raw.ganancia) || 0,
+    tipo:           (raw.tipo as 'local' | 'despacho') ?? 'local',
+    credito:        Boolean(raw.credito),
+    pagado:         Boolean(raw.pagado),
+    montoPendiente: Number(raw.monto_pendiente) || 0,
+    cliente:        snap?.nombre ? { id: (raw.cliente_id as string | null) ?? undefined, nombre: snap.nombre as string, telefono: snap.telefono as string | undefined, ciudad: snap.ciudad as string | undefined, correo: snap.correo as string | undefined, direccion: snap.direccion as string | undefined, depto: snap.depto as string | undefined } : null,
+    items:          items.map(i => ({ productId: 0, name: i.nombre as string, cat: (i.categoria as string) ?? '', qty: Number(i.qty), price: Number(i.precio), cost: Number(i.costo) || 0 })),
+    pagos:          pagos.map(p  => ({ fecha: new Date(p.created_at as string), monto: Number(p.monto), metodo: (p.metodo as string) ?? '' })),
+    descuento:      raw.descuento_tipo ? { type: raw.descuento_tipo as 'pct' | 'fixed', value: Number(raw.descuento_valor) || 0, amount: Number(raw.descuento_monto) || 0 } : null,
+    pagoMixto:      raw.pago_mixto_metodo ? { metodo: raw.pago_mixto_metodo as string, monto: Number(raw.pago_mixto_monto) || 0 } : null,
+  }
+}
+
+function mapProductoLegacy(raw: Record<string, unknown>): Product {
+  const costo  = Number(raw.costo)  || 0
+  const precio = Number(raw.precio) || 0
+  const margen = precio - costo
+  return {
+    id:            raw.id as unknown as number,
+    name:          raw.nombre as string,
+    cat:           (raw.categoria as string) ?? '',
+    unit:          (raw.unidad   as string)  ?? 'Unidad',
+    cost:          costo,
+    price:         precio,
+    margin:        margen,
+    marginPct:     precio > 0 ? (margen / precio) * 100 : 0,
+    stock:         Number(raw.stock)         || 0,
+    min:           Number(raw.stock_minimo)  || 0,
+    sold:          0,
+    kgPerUnit:     raw.kg_por_unidad  != null ? Number(raw.kg_por_unidad)  : undefined,
+    precioDespacho: raw.precio_despacho != null ? Number(raw.precio_despacho) : undefined,
+    orden:         Number(raw.orden) || 0,
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const { negocioId, rol } = usePerfil()
   const [products, setProducts] = useState<Product[]>([])
@@ -270,6 +317,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })()
     return () => { alive = false }
   }, [negocioId])
+
+  useEffect(() => {
+    if (!negocioId) return
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase
+        .from('ventas')
+        .select('*, venta_items(id,producto_id,nombre,categoria,qty,precio,costo,unidades_base), venta_pagos(id,monto,metodo,created_at)')
+        .eq('negocio_id', negocioId)
+        .eq('anulada', false)
+        .order('created_at', { ascending: false })
+      if (!alive) return
+      setSales(((data ?? []) as Record<string, unknown>[]).map(mapVentaLegacy))
+    })()
+    return () => { alive = false }
+  }, [negocioId])
+
+  useEffect(() => {
+    if (!negocioId) return
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase
+        .from('productos')
+        .select('*')
+        .eq('negocio_id', negocioId)
+        .eq('activo', true)
+      if (!alive) return
+      setProducts(((data ?? []) as Record<string, unknown>[]).map(mapProductoLegacy))
+    })()
+    return () => { alive = false }
+  }, [negocioId])
+
   const [categorias, setCategorias] = useState<string[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
   const toast = useCallback((msg: string, icon = 'check') => {
