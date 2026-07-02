@@ -3,7 +3,7 @@
 // ---------- Notificaciones (portado de screen-notificaciones.jsx) ----------
 import { useState, useMemo } from 'react'
 import { useStore, useMetrics, clientMetrics } from '@/lib/store'
-import { useCloudCollection } from '@/lib/supabase/cloud-state'
+
 import { fmtCLP, fmtPct } from '@/lib/format'
 import { useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
@@ -136,7 +136,7 @@ export default function NotificacionesPage() {
 
   const notifs = useMemo(() => buildNotifications(m, products, sales, settings, clientes), [m, products, sales, settings, clientes])
 
-  const [reminders, setReminders] = useCloudCollection<ReminderRowData>('notif_config', negocioId)
+  const [reminders, setReminders] = useState<ReminderRowData[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newR, setNewR] = useState({ type: 'stock', title: '', desc: '', frecuencia: 'Diario' })
 

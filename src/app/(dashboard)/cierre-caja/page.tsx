@@ -3,7 +3,7 @@
 // ---------- Cierre de caja: reconciliación de fin de jornada (portado de screen-cierreCaja.jsx) ----------
 import { useState } from 'react'
 import { useStore, TODAY, montosPorMetodo } from '@/lib/store'
-import { useCloudCollection } from '@/lib/supabase/cloud-state'
+
 import { useGo } from '@/lib/nav'
 import { fmtCLP, fmtNum } from '@/lib/format'
 import { Icon } from '@/components/icon'
@@ -33,7 +33,7 @@ type SumRow =
 export default function CierreCajaPage() {
   const go = useGo()
   const { sales, products, toast, negocioId } = useStore()
-  const [cierres, setCierres] = useCloudCollection<Cierre>('cierres', negocioId)
+  const [cierres, setCierres] = useState<Cierre[]>([])
   const [efectivoContado, setEfectivoContado] = useState<number | ''>('')
   const [tarjetaContado, setTarjetaContado] = useState<number | ''>('')
   const [transContado, setTransContado] = useState<number | ''>('')

@@ -3,7 +3,7 @@
 // ---------- Recordatorios (portado de screen-recordatorios.jsx) ----------
 import { useState, useMemo } from 'react'
 import { useStore, useMetrics } from '@/lib/store'
-import { useCloudCollection } from '@/lib/supabase/cloud-state'
+
 import { fmtCLP } from '@/lib/format'
 import { useGo } from '@/lib/nav'
 import { Icon } from '@/components/icon'
@@ -159,7 +159,7 @@ export default function RecordatoriosPage() {
   const go = useGo()
   const { negocioId } = useStore()
   const m = useMetrics()
-  const [reminders, setReminders] = useCloudCollection<Reminder>('recordatorios', negocioId)
+  const [reminders, setReminders] = useState<Reminder[]>([])
   const [filter, setFilter] = useState('pendientes')
   const [typeFilter, setTypeFilter] = useState('todos')
   const [showNew, setShowNew] = useState(false)

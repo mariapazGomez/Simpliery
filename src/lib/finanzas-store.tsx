@@ -3,9 +3,8 @@
 // ---------- Finanzas Store: gastos, nómina, marketing, metas, créditos ----------
 // Portado de finanzas-store.jsx.
 
-import { createContext, useContext, useCallback, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useStore, TODAY, clientMetrics } from '@/lib/store'
-import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import type { Gasto, NominaItem, MarketingItem, Meta, Credito, CreditoPago } from '@/types'
 
 /** Mes de una fecha como "AAAA-MM" (comparable como texto). */
@@ -90,11 +89,11 @@ export function useFinanzas(): FinanzasValue {
 
 export function FinanzasProvider({ children }: { children: ReactNode }) {
   const { negocioId } = useStore()
-  const [gastos, setGastos, rdyGastos] = useCloudCollection<Gasto>('gastos', negocioId)
-  const [nomina, setNomina] = useCloudCollection<NominaItem>('nomina', negocioId)
-  const [marketing, setMarketing] = useCloudCollection<MarketingItem>('marketing', negocioId)
-  const [metas, setMetas] = useCloudCollection<Meta>('metas', negocioId)
-  const [creditos, setCreditos] = useCloudCollection<Credito>('creditos', negocioId)
+  const [gastos, setGastos] = useState<Gasto[]>([])
+  const [nomina, setNomina] = useState<NominaItem[]>([])
+  const [marketing, setMarketing] = useState<MarketingItem[]>([])
+  const [metas, setMetas] = useState<Meta[]>([])
+  const [creditos, setCreditos] = useState<Credito[]>([])
 
   const addGasto = useCallback((g: Omit<Gasto, 'id'>) => setGastos((gs) => [...gs, { ...g, id: 'g' + Date.now() }]), [setGastos])
   const updateGasto = useCallback((id: string, p: Partial<Gasto>) => setGastos((gs) => gs.map((g) => (g.id === id ? { ...g, ...p } : g))), [setGastos])
@@ -126,10 +125,10 @@ export function FinanzasProvider({ children }: { children: ReactNode }) {
   // Genera las copias mensuales faltantes de los gastos recurrentes (arriendo,
   // sueldos fijos…) hasta el mes actual. Idempotente: una vez creadas, no repite.
   useEffect(() => {
-    if (!negocioId || !rdyGastos) return
+    if (!negocioId) return
     const faltan = instanciasFaltantes(gastos, TODAY)
     if (faltan.length) setGastos((gs) => [...gs, ...faltan])
-  }, [negocioId, rdyGastos, gastos, setGastos])
+  }, [negocioId, gastos, setGastos])
 
   const value: FinanzasValue = { gastos, nomina, marketing, metas, creditos, addGasto, updateGasto, deleteGasto, addNomina, payNomina, deleteNomina, addMarketing, deleteMarketing, addMeta, updateMeta, deleteMeta, addCredito, updateCredito, pagarCredito }
   return <FinCtx.Provider value={value}>{children}</FinCtx.Provider>

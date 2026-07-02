@@ -3,7 +3,7 @@
 // ---------- Proveedores: gestión simple de proveedores (portado de screen-proveedores.jsx) ----------
 import { useState } from 'react'
 import { useStore, TODAY } from '@/lib/store'
-import { useCloudCollection } from '@/lib/supabase/cloud-state'
+
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, Field, SearchBox } from '@/components/ui'
 
@@ -106,7 +106,7 @@ function ProveedorModal({ initial, cats, onSave, onClose }: { initial?: Proveedo
 
 export default function ProveedoresPage() {
   const { toast, products, negocioId, categorias } = useStore()
-  const [proveedores, setProveedores] = useCloudCollection<Proveedor>('proveedores', negocioId)
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
   const addProv = (p: Proveedor) => setProveedores((ps) => [...ps, p])
   const updateProv = (id: string, p: Partial<Proveedor>) => setProveedores((ps) => ps.map((x) => (x.id === id ? { ...x, ...p } : x)))
   const deleteProv = (pv: Proveedor) => {

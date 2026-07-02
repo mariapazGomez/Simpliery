@@ -1,9 +1,8 @@
 'use client'
 
 // ---------- Formats Store: inventario multi-formato (portado de formats-store.jsx) ----------
-import { createContext, useContext, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useCallback, useState, type ReactNode } from 'react'
 import { useStore } from '@/lib/store'
-import { useCloudCollection } from '@/lib/supabase/cloud-state'
 import type { Product, Format } from '@/types'
 
 interface FormatsValue {
@@ -29,8 +28,7 @@ export function useFormats(): FormatsValue {
 
 export function FormatsProvider({ children }: { children: ReactNode }) {
   const { negocioId } = useStore()
-  // Formatos persistentes en la nube (tabla `formatos`). Misma firma que useState.
-  const [formats, setFormats, rdyFmt] = useCloudCollection<Format>('formatos', negocioId)
+  const [formats, setFormats] = useState<Format[]>([])
 
   const getFormats = useCallback((productId: number) => formats.filter((f) => f.productId === productId), [formats])
   const getFormat = useCallback((formatId: string) => formats.find((f) => f.id === formatId), [formats])
@@ -72,12 +70,5 @@ export function FormatsProvider({ children }: { children: ReactNode }) {
     formats, getFormats, getFormat, productHasFormats, toggleFormats, addFormat, updateFormat, deleteFormat,
     baseStockForSale, canSellFormat, maxUnitsForFormat,
   }
-  // Espera a que carguen los formatos para no mostrar un producto con formatos como simple por un instante.
-  if (negocioId && !rdyFmt)
-    return (
-      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'var(--surface-2, #f6f5f1)' }}>
-        <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid var(--line)', borderTopColor: 'var(--primary)', animation: 'navspin .8s linear infinite' }} />
-      </div>
-    )
   return <FmtCtx.Provider value={value}>{children}</FmtCtx.Provider>
 }
