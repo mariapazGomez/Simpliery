@@ -2,7 +2,7 @@
 // Portado de lib.jsx (parte no-visual). Los componentes de gráfico y StockChip
 // viven en components/charts.tsx.
 
-import type { Product, StockState, Format } from '@/types'
+import type { StockState, Format } from '@/types'
 
 /** Unidades de medida basadas en peso/volumen (admiten venta a granel y decimales). */
 export function UNIT_IS_WEIGHT(unit: string): boolean {
@@ -85,9 +85,10 @@ export function formatoEnCanal(canal: string | null | undefined, tipo: 'local' |
   return c === 'ambos' || c === tipo
 }
 
-export function stockState(p: Pick<Product, 'stock' | 'min'>): StockState {
+export function stockState(p: { stock: number; min?: number; stock_minimo?: number }): StockState {
+  const minimo = p.min ?? p.stock_minimo ?? 0
   if (p.stock <= 0) return 'sin'
-  if (p.stock <= p.min) return 'bajo'
+  if (p.stock <= minimo) return 'bajo'
   return 'ok'
 }
 

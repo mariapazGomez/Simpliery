@@ -122,5 +122,31 @@ export function useProductos() {
     setProductos(ps => ps.filter(p => p.id !== id))
   }, [])
 
-  return { productos, loading, agregar, actualizar, eliminar }
+  const reponer = useCallback(async (id: string, qty: number, nota?: string) => {
+    if (!negocioId) return
+    const supabase = createClient()
+    const { error } = await supabase.rpc('reponer_stock', {
+      p_negocio_id:  negocioId,
+      p_producto_id: id,
+      p_qty:         qty,
+      p_nota:        nota ?? null,
+    })
+    if (error) throw error
+    setProductos(ps => ps.map(p => p.id === id ? { ...p, stock: p.stock + qty } : p))
+  }, [negocioId])
+
+  const ajustar = useCallback(async (id: string, nuevoStock: number, nota?: string) => {
+    if (!negocioId) return
+    const supabase = createClient()
+    const { error } = await supabase.rpc('ajustar_stock', {
+      p_negocio_id:  negocioId,
+      p_producto_id: id,
+      p_nuevo_stock: nuevoStock,
+      p_nota:        nota ?? null,
+    })
+    if (error) throw error
+    setProductos(ps => ps.map(p => p.id === id ? { ...p, stock: nuevoStock } : p))
+  }, [negocioId])
+
+  return { productos, loading, agregar, actualizar, eliminar, reponer, ajustar }
 }
