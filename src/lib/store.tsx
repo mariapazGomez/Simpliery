@@ -6,7 +6,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { catColor, stockState, fmtCLP } from '@/lib/format'
 import { Icon } from '@/components/icon'
-import { usePerfil, useCloudCollection, useCloudSingleton, setCloudErrorHandler } from '@/lib/supabase/cloud-state'
+import { usePerfil, setCloudErrorHandler } from '@/lib/supabase/cloud-state'
 import { createClient } from '@/lib/supabase/client'
 import { PRODUCT_UNITS } from '@/types'
 import type {
@@ -249,7 +249,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
   const [despachos, setDespachos] = useState<Despacho[]>([])
-  const [settings, setSettings, rdySet] = useCloudSingleton<Settings>('configuracion', 'data', negocioId, DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+  const [rdySet, setRdySet] = useState(false)
+
+  useEffect(() => {
+    if (!negocioId) return
+    let alive = true
+    ;(async () => {
+      const { data } = await supabase
+        .from('configuracion')
+        .select('nombre_negocio,owner_nombre,owner_rol,moneda,metodos_pago,stock_minimo_default,margen_minimo')
+        .eq('negocio_id', negocioId)
+        .single()
+      if (!alive) return
+      if (data) {
+        const r = data as { nombre_negocio: string; owner_nombre: string | null; owner_rol: string | null; moneda: string; metodos_pago: string[]; stock_minimo_default: number; margen_minimo: number }
+        setSettings({ business: r.nombre_negocio, ownerName: r.owner_nombre ?? '', ownerRole: r.owner_rol ?? 'Dueño/a', currency: r.moneda, methods: r.metodos_pago, minStockDefault: r.stock_minimo_default, minMargin: r.margen_minimo })
+      }
+      setRdySet(true)
+    })()
+    return () => { alive = false }
+  }, [negocioId])
   const [categorias, setCategorias] = useState<string[]>([])
   const [toasts, setToasts] = useState<Toast[]>([])
   const toast = useCallback((msg: string, icon = 'check') => {
