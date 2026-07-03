@@ -1,17 +1,9 @@
 'use client'
 
-// ---------- Permisos por rol (gating en la app, configurable por negocio) ----------
-// IMPORTANTE: esto OCULTA secciones y datos en la interfaz según el rol, pero el
-// aislamiento fuerte entre negocios lo da RLS en Supabase. El control por rol
-// DENTRO de un negocio es de interfaz (un usuario muy técnico podría llamar la
-// API igual). Suficiente para un equipo de confianza; el refuerzo en servidor
-// queda como mejora futura.
-//
-// Los permisos son DATOS editables: `settings.permisos` (por negocio) manda; si no
-// hay nada guardado para un rol, se usan los valores por defecto de abajo.
+// ---------- Permisos por rol (gating en la app) ----------
+// El aislamiento entre negocios lo da RLS en Supabase.
+// El control por rol dentro de un negocio se lee de permisos_modulo_rol (DB-driven).
 
-import { useMemo } from 'react'
-import { useStore } from '@/lib/store'
 import type { RolPermiso } from '@/types'
 
 /** Secciones (ids de navegación) por defecto de cada rol. 'all' = todo. */
@@ -67,17 +59,4 @@ export function esAdmin(rol: string | null | undefined): boolean {
   return rol === 'admin' || rol == null
 }
 
-/** Permisos del usuario actual, ya mezclados con la config del negocio. */
-export function usePermisos() {
-  const { rol, settings } = useStore()
-  const config = settings.permisos as PermisosConfig | undefined
-  return useMemo(
-    () => ({
-      puedeVer: (id: string) => puedeVer(rol, id, config),
-      puedeVerDinero: () => puedeVerDinero(rol, config),
-      inicio: () => inicio(rol, config),
-      esAdmin: esAdmin(rol),
-    }),
-    [rol, config],
-  )
-}
+export { usePermisos } from '@/hooks/usePermisos'

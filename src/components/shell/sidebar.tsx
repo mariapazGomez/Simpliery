@@ -18,7 +18,7 @@ function NavSpinner() {
 
 export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const { settings, clientes } = useStore()
-  const { puedeVer, esAdmin } = usePermisos()
+  const { puedeVer, esAdmin, nombre, username, rol } = usePermisos()
   const m = useMetrics()
   const router = useRouter()
   const pathname = usePathname()
@@ -77,10 +77,15 @@ export function Sidebar({ open, setOpen }: { open: boolean; setOpen: (v: boolean
 
       <div className="sidebar-foot">
         <div className="user-chip">
-          <div className="avatar">{(settings.ownerName?.trim() || settings.business || 'U')[0].toUpperCase()}</div>
+          <div className="avatar">{(nombre || settings.ownerName?.trim() || settings.business || 'U')[0].toUpperCase()}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{settings.ownerName?.trim() || 'Mi cuenta'}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>{settings.ownerRole?.trim() || 'Dueño/a'}</div>
+            <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {nombre || settings.ownerName?.trim() || 'Mi cuenta'}
+              {username && <span style={{ fontSize: 11, color: 'var(--ink-3)', fontWeight: 600, marginLeft: 5 }}>@{username}</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>
+              {rol ? { admin: 'Administrador', vendedor: 'Vendedor', bodega: 'Bodega', contador: 'Contador' }[rol] ?? rol : settings.ownerRole?.trim() || 'Dueño/a'}
+            </div>
           </div>
           {esAdmin && (
             <Link href={ROUTE_MAP.config} onClick={() => setOpen(false)} title="Configuración" style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 4, display: 'grid', placeItems: 'center' }}>

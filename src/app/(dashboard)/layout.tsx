@@ -49,7 +49,7 @@ function AppShell({ children }: { children: ReactNode }) {
   const go = useGo()
   const m = useMetrics()
   const { rol } = useStore()
-  const { puedeVer, inicio } = usePermisos()
+  const { puedeVer, inicio, loading: permisosLoading } = usePermisos()
 
   const activeId = PATH_TO_ID[pathname] || (pathname?.startsWith('/finanzas') ? 'finanzas' : 'dashboard')
   const [t1] = TITLES[activeId] || ['—', '']
@@ -57,8 +57,8 @@ function AppShell({ children }: { children: ReactNode }) {
 
   // Si el rol no puede ver esta sección, redirige a su inicio permitido.
   useEffect(() => {
-    if (rol && !allowed) router.replace(ROUTE_MAP[inicio()] || '/ventas')
-  }, [rol, allowed, router, inicio])
+    if (rol && !permisosLoading && !allowed) router.replace(ROUTE_MAP[inicio()] || '/ventas')
+  }, [rol, allowed, permisosLoading, router, inicio])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

@@ -54,9 +54,13 @@ export async function provisionNegocio(params?: { nombre?: string }): Promise<{ 
   }
 
   // ── Registro nuevo sin invitación ────────────────────────────────────────
+  // Generar código único de 6 chars para el negocio
+  const { data: codigoData } = await admin.rpc('generar_codigo_negocio')
+  const codigo = codigoData as string | null
+
   const { data: negocio, error: negocioErr } = await admin
     .from('negocios')
-    .insert({ nombre: 'Mi negocio' })
+    .insert({ nombre: 'Mi negocio', codigo })
     .select('id')
     .single()
 
@@ -71,6 +75,8 @@ export async function provisionNegocio(params?: { nombre?: string }): Promise<{ 
     email: user.email,
     rol: 'admin',
   })
+
+  await admin.rpc('insertar_permisos_default', { p_negocio_id: nid }).throwOnError()
 
   await admin.from('configuracion').insert({ negocio_id: nid })
 
