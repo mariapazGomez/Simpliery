@@ -91,13 +91,13 @@ DECLARE
     'proveedores','configuracion','usuarios','cierre-caja',
     'recordatorios','notificaciones','segmentos'
   ];
-  rol    TEXT;
-  modulo TEXT;
+  v_rol    TEXT;
+  v_modulo TEXT;
 BEGIN
-  FOREACH rol IN ARRAY ARRAY['admin','vendedor','bodega','contador'] LOOP
-    FOREACH modulo IN ARRAY modulos LOOP
+  FOREACH v_rol IN ARRAY ARRAY['admin','vendedor','bodega','contador'] LOOP
+    FOREACH v_modulo IN ARRAY modulos LOOP
       INSERT INTO public.permisos_modulo_rol (negocio_id, rol, modulo, habilitado)
-      VALUES (p_negocio_id, rol, modulo, COALESCE((perms -> rol ->> modulo)::boolean, false))
+      VALUES (p_negocio_id, v_rol, v_modulo, COALESCE((perms -> v_rol ->> v_modulo)::boolean, false))
       ON CONFLICT (negocio_id, rol, modulo) DO NOTHING;
     END LOOP;
   END LOOP;
