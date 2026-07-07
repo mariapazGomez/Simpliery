@@ -6,7 +6,7 @@ import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInp
 import { PRODUCT_UNITS } from '@/types'
 import { fmtCLP, fmtNum, fmtPct } from '@/lib/format'
 import { useProductos, type Producto, type InsertProducto } from '@/hooks/useProductos'
-import { useCategorias } from '@/hooks/useCategorias'
+import { useCategorias, type Categoria } from '@/hooks/useCategorias'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
 
 const UNIT_IS_WEIGHT = (u: string) => ['kg', 'gramo', 'litro', 'mililitro'].includes(u)
@@ -23,6 +23,150 @@ interface FormState {
   stock_minimo: string
   foto_url: string
   precio_despacho: number | ''
+}
+
+/* ---------- Panel lateral de categorías ---------- */
+function CategoriasPanel({
+  categorias, productos, cat, onSelect, agregar, renombrar, eliminar,
+}: {
+  categorias: Categoria[]
+  productos: Producto[]
+  cat: string
+  onSelect: (c: string) => void
+  agregar: (nombre: string) => Promise<void>
+  renombrar: (id: string, nombre: string) => Promise<void>
+  eliminar: (id: string) => Promise<void>
+}) {
+  const [adding, setAdding]       = useState(false)
+  const [newCat, setNewCat]       = useState('')
+  const [gestionando, setGest]    = useState(false)
+  const [renamingId, setRenaming] = useState<string | null>(null)
+  const [renameVal, setRenameVal] = useState('')
+
+  const countFor = (nombre: string) => productos.filter(p => p.categoria === nombre).length
+
+  const handleAdd = async () => {
+    if (!newCat.trim()) return
+    await agregar(newCat.trim())
+    setNewCat('')
+    setAdding(false)
+  }
+
+  const handleRename = async (id: string) => {
+    if (!renameVal.trim()) return
+    await renombrar(id, renameVal.trim())
+    setRenaming(null)
+  }
+
+  const handleDelete = async (c: Categoria) => {
+    if (!window.confirm(`¿Borrar "${c.nombre}"? Los productos perderán su categoría.`)) return
+    await eliminar(c.id)
+  }
+
+  const itemStyle = (selected: boolean): React.CSSProperties => ({
+    display: 'flex', alignItems: 'center', gap: 7,
+    padding: '9px 14px', cursor: 'pointer', userSelect: 'none',
+    background: selected ? 'var(--primary-tint)' : 'transparent',
+    borderBottom: '1px solid var(--line)',
+  })
+
+  const countBadge = (n: number) => (
+    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink-3)', background: 'var(--surface-2)', padding: '1px 7px', borderRadius: 9, flexShrink: 0 }}>{n}</span>
+  )
+
+  return (
+    <div className="card" style={{ width: 210, flexShrink: 0, padding: 0, overflow: 'hidden', alignSelf: 'flex-start' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 12px', borderBottom: '1px solid var(--line)' }}>
+        <span style={{ fontWeight: 800, fontSize: 13, flex: 1 }}>Categorías</span>
+        <button
+          className="btn btn-ghost"
+          style={{ padding: '3px 8px', fontSize: 12, color: adding ? 'var(--primary-700)' : undefined, background: adding ? 'var(--primary-tint)' : undefined }}
+          onClick={() => { setAdding(a => !a); setGest(false); setRenaming(null) }}
+        >
+          <Icon name="plus" size={12} />Nueva
+        </button>
+        <button
+          className="btn btn-ghost"
+          style={{ padding: '3px 8px', fontSize: 12, color: gestionando ? 'var(--primary-700)' : undefined, background: gestionando ? 'var(--primary-tint)' : undefined }}
+          onClick={() => { setGest(g => !g); setAdding(false); setRenaming(null) }}
+        >
+          Gestionar
+        </button>
+      </div>
+
+      {/* Input nueva categoría */}
+      {adding && (
+        <div style={{ display: 'flex', gap: 6, padding: '9px 10px', borderBottom: '1px solid var(--line)', background: 'var(--surface-3)' }}>
+          <input
+            className="input"
+            style={{ flex: 1, height: 32, fontSize: 13 }}
+            value={newCat}
+            autoFocus
+            placeholder="Nombre…"
+            onChange={e => setNewCat(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') setAdding(false) }}
+          />
+          <button className="btn btn-primary btn-icon" style={{ width: 32, height: 32, flexShrink: 0 }} disabled={!newCat.trim()} onClick={handleAdd}>
+            <Icon name="check" size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Todas */}
+      <button onClick={() => onSelect('Todas')} style={{ ...itemStyle(cat === 'Todas'), border: 'none', width: '100%', fontFamily: 'inherit' }}>
+        <span style={{ flex: 1, fontSize: 13.5, fontWeight: cat === 'Todas' ? 800 : 600, color: cat === 'Todas' ? 'var(--primary-700)' : 'var(--ink-2)', textAlign: 'left' }}>Todas</span>
+        {countBadge(productos.length)}
+      </button>
+
+      {/* Lista */}
+      {categorias.map(c => (
+        <div key={c.id} style={{ borderBottom: '1px solid var(--line)' }}>
+          {renamingId === c.id ? (
+            <div style={{ display: 'flex', gap: 5, padding: '7px 10px', background: 'var(--surface-3)' }}>
+              <input
+                className="input"
+                style={{ flex: 1, height: 28, fontSize: 12.5 }}
+                value={renameVal}
+                autoFocus
+                onChange={e => setRenameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleRename(c.id); if (e.key === 'Escape') setRenaming(null) }}
+              />
+              <button className="btn btn-primary btn-icon" style={{ width: 28, height: 28, flexShrink: 0 }} onClick={() => handleRename(c.id)}><Icon name="check" size={12} /></button>
+              <button className="btn btn-ghost btn-icon" style={{ width: 28, height: 28, flexShrink: 0 }} onClick={() => setRenaming(null)}><Icon name="x" size={12} /></button>
+            </div>
+          ) : (
+            <div
+              onClick={() => !gestionando && onSelect(c.nombre)}
+              style={{ ...itemStyle(cat === c.nombre && !gestionando), cursor: gestionando ? 'default' : 'pointer' }}
+            >
+              <CatDot cat={c.nombre} />
+              <span style={{ flex: 1, fontSize: 13.5, fontWeight: cat === c.nombre && !gestionando ? 800 : 600, color: cat === c.nombre && !gestionando ? 'var(--primary-700)' : 'var(--ink-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {c.nombre}
+              </span>
+              {!gestionando && countBadge(countFor(c.nombre))}
+              {gestionando && (
+                <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                  <button className="btn btn-ghost btn-icon" style={{ width: 26, height: 26 }} title="Renombrar" onClick={() => { setRenaming(c.id); setRenameVal(c.nombre) }}>
+                    <Icon name="edit" size={13} />
+                  </button>
+                  <button className="btn btn-ghost btn-icon" style={{ width: 26, height: 26, color: 'var(--danger)' }} title="Eliminar" onClick={() => handleDelete(c)}>
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {categorias.length === 0 && !adding && (
+        <div style={{ padding: '14px 12px', fontSize: 13, color: 'var(--ink-3)', fontWeight: 600, textAlign: 'center' }}>
+          Sin categorías.<br />Toca <strong>Nueva</strong> para agregar.
+        </div>
+      )}
+    </div>
+  )
 }
 
 /* ---------- Modal de alta / edición ---------- */
@@ -193,7 +337,7 @@ function ProductoForm({
 /* ---------- Pantalla principal ---------- */
 export default function ProductosPage() {
   const { productos, loading, agregar, actualizar, eliminar } = useProductos()
-  const { categorias } = useCategorias()
+  const { categorias, agregar: agregarCat, renombrar: renombrarCat, eliminar: eliminarCat } = useCategorias()
   const { config } = useConfiguracion()
 
   const catNombres = useMemo(() => categorias.map(c => c.nombre), [categorias])
@@ -205,8 +349,6 @@ export default function ProductosPage() {
   const [sort, setSort] = useState<{ k: keyof Producto; dir: number }>({ k: 'nombre', dir: 1 })
   const [dragRow, setDragRow] = useState<string | null>(null)
   const [overRow, setOverRow] = useState<string | null>(null)
-
-  const cats = useMemo(() => ['Todas', ...catNombres], [catNombres])
 
   const reordenando = cat !== 'Todas' && q.trim() === ''
   const filtered = productos.filter(p =>
@@ -267,133 +409,113 @@ export default function ProductosPage() {
         </button>
       </PageHeader>
 
-      {/* Filtro por categoría */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-        {cats.map(c => (
-          <button
-            key={c}
-            onClick={() => setCat(c)}
-            className={'chip' + (cat === c ? ' chip-primary' : ' chip-neutral')}
-            style={{ cursor: 'pointer', fontFamily: 'inherit', padding: '6px 12px', fontSize: 13 }}
-          >
-            {c !== 'Todas' && <CatDot cat={c} />}{c}
-            {c !== 'Todas' && (
-              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--ink-3)', fontWeight: 700 }}>
-                {productos.filter(p => p.categoria === c).length}
-              </span>
-            )}
-          </button>
-        ))}
-        {catNombres.length === 0 && !loading && (
-          <span style={{ fontSize: 13, color: 'var(--ink-3)', fontWeight: 600 }}>
-            Sin categorías — agrégalas en <a href="/configuracion" style={{ color: 'var(--primary-700)' }}>Configuración</a>
-          </span>
-        )}
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 48, color: 'var(--ink-3)', fontWeight: 600 }}>Cargando productos…</div>
-      ) : list.length === 0 ? (
-        <EmptyState
-          icon="box"
-          title={q || cat !== 'Todas' ? 'Sin resultados' : 'Agrega tu primer producto'}
-          text={q || cat !== 'Todas' ? 'Prueba cambiando la búsqueda o el filtro.' : 'Haz clic en "Agregar" para crear tu catálogo.'}
+      <div style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
+        <CategoriasPanel
+          categorias={categorias}
+          productos={productos}
+          cat={cat}
+          onSelect={setCat}
+          agregar={agregarCat}
+          renombrar={renombrarCat}
+          eliminar={eliminarCat}
         />
-      ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="tbl">
-              <thead>
-                <tr>
-                  {reordenando && <th style={{ width: 24 }} />}
-                  <th style={{ width: 48 }} />
-                  <Th k="nombre">Producto</Th>
-                  <Th k="categoria">Categoría</Th>
-                  <Th k="precio" num>Precio</Th>
-                  <Th k="costo" num>Costo</Th>
-                  <Th k="margen_pct" num>Margen</Th>
-                  <Th k="stock" num>Stock</Th>
-                  <Th k="vendido" num>Vendido</Th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {list.map(p => (
-                  <tr
-                    key={p.id}
-                    draggable={reordenando}
-                    onDragStart={reordenando ? () => setDragRow(p.id) : undefined}
-                    onDragOver={reordenando ? e => { e.preventDefault(); setOverRow(p.id) } : undefined}
-                    onDrop={reordenando ? () => dropRow(p.id) : undefined}
-                    style={overRow === p.id ? { background: 'var(--primary-tint)' } : undefined}
-                  >
-                    {reordenando && (
-                      <td style={{ color: 'var(--ink-3)', cursor: 'grab', paddingRight: 4 }}>
-                        <Icon name="menu" size={15} />
-                      </td>
-                    )}
-                    <td style={{ paddingRight: 4 }}>
-                      {p.foto_url ? (
-                        <img src={p.foto_url} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', display: 'block' }} />
-                      ) : (
-                        <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
-                          <Icon name="box" size={16} style={{ color: 'var(--ink-3)' }} />
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>{p.nombre}</div>
-                      <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>
-                        {UNIT_ABBREV(p.unidad)}
-                        {p.precio_despacho && p.precio_despacho !== p.precio && (
-                          <> · desp. {fmtCLP(p.precio_despacho)}</>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 48, color: 'var(--ink-3)', fontWeight: 600 }}>Cargando productos…</div>
+          ) : list.length === 0 ? (
+            <EmptyState
+              icon="box"
+              title={q || cat !== 'Todas' ? 'Sin resultados' : 'Agrega tu primer producto'}
+              text={q || cat !== 'Todas' ? 'Prueba cambiando la búsqueda o el filtro.' : 'Haz clic en "Agregar" para crear tu catálogo.'}
+            />
+          ) : (
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      {reordenando && <th style={{ width: 24 }} />}
+                      <th style={{ width: 48 }} />
+                      <Th k="nombre">Producto</Th>
+                      <Th k="categoria">Categoría</Th>
+                      <Th k="precio" num>Precio</Th>
+                      <Th k="costo" num>Costo</Th>
+                      <Th k="margen_pct" num>Margen</Th>
+                      <Th k="stock" num>Stock</Th>
+                      <Th k="vendido" num>Vendido</Th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map(p => (
+                      <tr
+                        key={p.id}
+                        draggable={reordenando}
+                        onDragStart={reordenando ? () => setDragRow(p.id) : undefined}
+                        onDragOver={reordenando ? e => { e.preventDefault(); setOverRow(p.id) } : undefined}
+                        onDrop={reordenando ? () => dropRow(p.id) : undefined}
+                        style={overRow === p.id ? { background: 'var(--primary-tint)' } : undefined}
+                      >
+                        {reordenando && (
+                          <td style={{ color: 'var(--ink-3)', cursor: 'grab', paddingRight: 4 }}>
+                            <Icon name="menu" size={15} />
+                          </td>
                         )}
-                      </div>
-                    </td>
-                    <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CatDot cat={p.categoria} />
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{p.categoria}</span>
-                      </span>
-                    </td>
-                    <td className="num">{fmtCLP(p.precio)}</td>
-                    <td className="num" style={{ color: 'var(--ink-3)' }}>{fmtCLP(p.costo)}</td>
-                    <td className="num"><MarginBadge pct={p.margen_pct} minMargin={config.margen_minimo} /></td>
-                    <td className="num">
-                      <span style={{ fontWeight: 700, color: OUT_STOCK(p) ? 'var(--danger)' : LOW_STOCK(p) ? 'oklch(0.50 0.10 70)' : undefined }}>
-                        {fmtNum(p.stock)} {UNIT_ABBREV(p.unidad)}
-                      </span>
-                      {LOW_STOCK(p) && !OUT_STOCK(p) && <div style={{ fontSize: 11, color: 'oklch(0.50 0.10 70)', fontWeight: 600 }}>stock bajo</div>}
-                      {OUT_STOCK(p) && <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>sin stock</div>}
-                    </td>
-                    <td className="num" style={{ color: 'var(--ink-3)' }}>{fmtNum(p.vendido)}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button
-                          className="btn btn-ghost btn-icon"
-                          title="Editar"
-                          onClick={() => setEdit(p)}
-                          style={{ width: 32, height: 32 }}
-                        >
-                          <Icon name="edit" size={15} />
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-icon"
-                          title="Eliminar"
-                          onClick={() => handleDelete(p)}
-                          style={{ width: 32, height: 32, color: 'var(--danger)' }}
-                        >
-                          <Icon name="trash" size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        <td style={{ paddingRight: 4 }}>
+                          {p.foto_url ? (
+                            <img src={p.foto_url} alt="" style={{ width: 36, height: 36, borderRadius: 9, objectFit: 'cover', display: 'block' }} />
+                          ) : (
+                            <div style={{ width: 36, height: 36, borderRadius: 9, background: 'var(--surface-2)', display: 'grid', placeItems: 'center' }}>
+                              <Icon name="box" size={16} style={{ color: 'var(--ink-3)' }} />
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.nombre}</div>
+                          <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>
+                            {UNIT_ABBREV(p.unidad)}
+                            {p.precio_despacho && p.precio_despacho !== p.precio && (
+                              <> · desp. {fmtCLP(p.precio_despacho)}</>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <CatDot cat={p.categoria} />
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>{p.categoria}</span>
+                          </span>
+                        </td>
+                        <td className="num">{fmtCLP(p.precio)}</td>
+                        <td className="num" style={{ color: 'var(--ink-3)' }}>{fmtCLP(p.costo)}</td>
+                        <td className="num"><MarginBadge pct={p.margen_pct} minMargin={config.margen_minimo} /></td>
+                        <td className="num">
+                          <span style={{ fontWeight: 700, color: OUT_STOCK(p) ? 'var(--danger)' : LOW_STOCK(p) ? 'oklch(0.50 0.10 70)' : undefined }}>
+                            {fmtNum(p.stock)} {UNIT_ABBREV(p.unidad)}
+                          </span>
+                          {LOW_STOCK(p) && !OUT_STOCK(p) && <div style={{ fontSize: 11, color: 'oklch(0.50 0.10 70)', fontWeight: 600 }}>stock bajo</div>}
+                          {OUT_STOCK(p) && <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>sin stock</div>}
+                        </td>
+                        <td className="num" style={{ color: 'var(--ink-3)' }}>{fmtNum(p.vendido)}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            <button className="btn btn-ghost btn-icon" title="Editar" onClick={() => setEdit(p)} style={{ width: 32, height: 32 }}>
+                              <Icon name="edit" size={15} />
+                            </button>
+                            <button className="btn btn-ghost btn-icon" title="Eliminar" onClick={() => handleDelete(p)} style={{ width: 32, height: 32, color: 'var(--danger)' }}>
+                              <Icon name="trash" size={15} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Modal alta */}
       {form && (

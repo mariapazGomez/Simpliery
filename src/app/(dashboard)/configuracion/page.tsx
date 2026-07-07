@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/icon'
-import { PageHeader, Field, CatDot } from '@/components/ui'
+import { PageHeader, Field } from '@/components/ui'
 import { useConfiguracion, type Configuracion } from '@/hooks/useConfiguracion'
-import { useCategorias } from '@/hooks/useCategorias'
 
 export default function ConfiguracionPage() {
   const { config, loading, guardar } = useConfiguracion()
-  const { categorias, agregar, renombrar, eliminar } = useCategorias()
 
   const [f, setF] = useState<Configuracion | null>(null)
   const initialized = useRef(false)
@@ -16,7 +14,6 @@ export default function ConfiguracionPage() {
   const [saved, setSaved] = useState(false)
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [newMethod, setNewMethod] = useState('')
-  const [newCat, setNewCat] = useState('')
 
   // Inicializar formulario una sola vez cuando carga la config real
   useEffect(() => {
@@ -233,70 +230,6 @@ export default function ConfiguracionPage() {
                 className="btn btn-ghost"
                 disabled={!newMethod.trim()}
                 onClick={() => { set('metodos_pago', [...f.metodos_pago, newMethod.trim()]); setNewMethod('') }}
-              >
-                <Icon name="plus" size={16} />Agregar
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Categorías */}
-        <section className="card">
-          <div className="card-head">
-            <span style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--terra-tint)', color: 'var(--terra-700)', display: 'grid', placeItems: 'center' }}>
-              <Icon name="tag" size={16} />
-            </span>
-            <div style={{ flex: 1 }}>
-              <div className="card-title">Categorías</div>
-              <div className="card-sub">Agrupa tus productos · puedes renombrar o borrar</div>
-            </div>
-          </div>
-          <div className="card-pad">
-            <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', marginBottom: 14 }}>
-              {categorias.map(cat => (
-                <span key={cat.id} className="chip chip-neutral" style={{ padding: '6px 8px 6px 12px', fontSize: 13.5, gap: 8 }}>
-                  <CatDot cat={cat.nombre} />
-                  {cat.nombre}
-                  <button
-                    title="Renombrar"
-                    onClick={async () => {
-                      const n = window.prompt(`Renombrar la categoría "${cat.nombre}":`, cat.nombre)
-                      if (n && n.trim() && n.trim() !== cat.nombre) {
-                        try { await renombrar(cat.id, n.trim()) }
-                        catch { window.alert('No se pudo renombrar la categoría') }
-                      }
-                    }}
-                    style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center' }}
-                  >
-                    <Icon name="edit" size={13} />
-                  </button>
-                  <button
-                    title="Borrar"
-                    onClick={async () => {
-                      if (!window.confirm(`¿Borrar la categoría "${cat.nombre}"? Los productos que la usen perderán su categoría.`)) return
-                      try { await eliminar(cat.id) }
-                      catch { window.alert('No se pudo borrar la categoría') }
-                    }}
-                    style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0, display: 'grid', placeItems: 'center' }}
-                  >
-                    <Icon name="x" size={14} />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                className="input"
-                style={{ maxWidth: 240 }}
-                value={newCat}
-                onChange={e => setNewCat(e.target.value)}
-                placeholder="Agregar categoría"
-                onKeyDown={async e => { if (e.key === 'Enter' && newCat.trim()) { await agregar(newCat.trim()); setNewCat('') } }}
-              />
-              <button
-                className="btn btn-ghost"
-                disabled={!newCat.trim()}
-                onClick={async () => { await agregar(newCat.trim()); setNewCat('') }}
               >
                 <Icon name="plus" size={16} />Agregar
               </button>
