@@ -227,7 +227,7 @@ interface VIRow {
   nombre: string
   qty: number | null
   precio: number | null
-  costoTotal: number | null
+  costoUnitario: number | null
   metodoPago: string
   tipo: 'local' | 'despacho'
   clienteNombre: string
@@ -293,7 +293,7 @@ function validateVentasRows(raw: Record<string, string>[]): VIRow[] {
     else if (precio === null || precio < 0) errors.push('Precio Unitario inválido')
 
     const costoRaw = (r['costo item'] ?? '').trim()
-    const costoTotal = costoRaw ? parseNumIV(costoRaw) : null
+    const costoUnitario = costoRaw ? parseNumIV(costoRaw) : null
 
     const descuentoRaw = (r['descuento boleta'] ?? '0').trim()
     const descuento = parseNumIV(descuentoRaw) ?? 0
@@ -309,7 +309,7 @@ function validateVentasRows(raw: Record<string, string>[]): VIRow[] {
       nombre,
       qty,
       precio,
-      costoTotal,
+      costoUnitario,
       metodoPago: (r['metodo pago'] ?? 'Efectivo').trim() || 'Efectivo',
       tipo: tipoRaw === 'despacho' ? 'despacho' : 'local',
       clienteNombre: (r['cliente'] ?? '').trim(),
@@ -340,7 +340,7 @@ function buildBoletas(rows: VIRow[]): BolataImport[] {
         categoria: r.categoria,
         qty: r.qty!,
         precio: r.precio!,
-        costo_unitario: r.costoTotal !== null && r.qty! > 0 ? r.costoTotal / r.qty! : 0,
+        costo_unitario: r.costoUnitario ?? 0,
       }))
     const subtotal = items.reduce((a, i) => a + i.precio * i.qty, 0)
     const descuento = first.descuento
@@ -446,7 +446,7 @@ function ImportVentasModal({ onClose, importarMasivoVentas }: {
             <div style={{ fontWeight: 800, fontSize: 14 }}>Paso 1 — Descarga la plantilla</div>
             <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600, lineHeight: 1.6 }}>
               Una fila por línea de producto. Agrupa items de la misma boleta repitiendo el mismo número en la columna <strong>Boleta</strong>.
-              Los campos marcados con <strong>*</strong> son obligatorios. <strong>Costo Item</strong> es el costo total del ítem (precio costo × cantidad).
+              Los campos marcados con <strong>*</strong> son obligatorios. <strong>Costo Item</strong> es el <strong>costo unitario</strong> del producto (igual al formato del export).
             </div>
             <button
               className="btn btn-soft"

@@ -307,49 +307,58 @@ export function useTransacciones() {
   const importarMasivoVentas = useCallback(async (boletas: BolataImport[]) => {
     if (!negocioId) throw new Error('Negocio no disponible')
     const supabase = createClient()
-    for (const b of boletas) {
-      const { data: vd, error: ve } = await supabase
-        .from('ventas')
-        .insert({
-          negocio_id:      negocioId,
-          boleta:          b.boleta,
-          tipo:            b.tipo,
-          cliente_snapshot: b.cliente,
-          metodo_pago:     b.metodo_pago,
-          total:           b.total,
-          costo:           b.costo,
-          ganancia:        b.ganancia,
-          descuento_monto: b.descuento > 0 ? b.descuento : null,
-          descuento_tipo:  b.descuento > 0 ? 'fixed' : null,
-          descuento_valor: b.descuento > 0 ? b.descuento : null,
-          credito:         false,
-          pagado:          true,
-          monto_pendiente: 0,
-          anulada:         false,
-          created_at:      b.created_at,
-        })
-        .select('id')
-        .single()
-      if (ve) throw new Error(`Boleta ${b.boleta}: ${ve.message}`)
-      const ventaId = (vd as { id: string }).id
-      if (b.items.length > 0) {
-        const { error: ie } = await supabase.from('venta_items').insert(
-          b.items.map(i => ({
-            negocio_id:    negocioId,
-            venta_id:      ventaId,
-            producto_id:   null,
-            nombre:        i.nombre,
-            categoria:     i.categoria,
-            qty:           i.qty,
-            precio:        i.precio,
-            costo:         i.costo_unitario,
-            unidades_base: i.qty,
-          }))
-        )
-        if (ie) throw new Error(`Items boleta ${b.boleta}: ${ie.message}`)
-      }
+
+    // Insert all ventas in one batch
+    const { data: ventasData, error: ve } = await supabase
+      .from('ventas')
+      .insert(boletas.map(b => ({
+        negocio_id:       negocioId,
+        boleta:           b.boleta,
+        tipo:             b.tipo,
+        cliente_snapshot: b.cliente,
+        metodo_pago:      b.metodo_pago,
+        total:            b.total,
+        costo:            b.costo,
+        ganancia:         b.ganancia,
+        descuento_monto:  b.descuento > 0 ? b.descuento : null,
+        descuento_tipo:   b.descuento > 0 ? 'fixed' : null,
+        descuento_valor:  b.descuento > 0 ? b.descuento : null,
+        credito:          false,
+        pagado:           true,
+        monto_pendiente:  0,
+        anulada:          false,
+        created_at:       b.created_at,
+      })))
+      .select('id, boleta')
+    if (ve) throw new Error(`Error al insertar ventas: ${ve.message}`)
+
+    // Map boleta number → venta id
+    const boletaToId = new Map(
+      ((ventasData ?? []) as { id: string; boleta: number }[]).map(v => [v.boleta, v.id])
+    )
+
+    // Insert all items in one batch
+    const allItems = boletas.flatMap(b => {
+      const ventaId = boletaToId.get(b.boleta)
+      if (!ventaId || b.items.length === 0) return []
+      return b.items.map(i => ({
+        negocio_id:    negocioId,
+        venta_id:      ventaId,
+        producto_id:   null,
+        nombre:        i.nombre,
+        categoria:     i.categoria,
+        qty:           i.qty,
+        precio:        i.precio,
+        costo:         i.costo_unitario,
+        unidades_base: i.qty,
+      }))
+    })
+    if (allItems.length > 0) {
+      const { error: ie } = await supabase.from('venta_items').insert(allItems)
+      if (ie) throw new Error(`Error al insertar items: ${ie.message}`)
     }
-    // Reload to reflect imported ventas
+
+    // Reload ventas list
     const { data } = await supabase
       .from('ventas')
       .select('*, venta_items(id, producto_id, nombre, categoria, qty, precio, costo, unidades_base), venta_pagos(id, monto, metodo, created_at)')

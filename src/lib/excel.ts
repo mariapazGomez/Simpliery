@@ -126,7 +126,8 @@ export function exportVentasExcel(ventas: VentaExport[], filename = 'ventas.xlsx
 
     for (const item of itemsToRender) {
       const totalItem = item ? item.precio * item.qty : 0
-      const costoItem = item ? item.costo * item.qty : 0
+      const costoUnit = item ? item.costo : 0
+      const costoTotal = item ? item.costo * item.qty : 0
       rows.push({
         'Boleta': v.boleta,
         'Fecha': fecha,
@@ -136,8 +137,8 @@ export function exportVentasExcel(ventas: VentaExport[], filename = 'ventas.xlsx
         'Cantidad': item?.qty ?? 0,
         'Precio Unitario': item?.precio ?? 0,
         'Total Item': totalItem,
-        'Costo Item': costoItem,
-        'Ganancia Item': totalItem - costoItem,
+        'Costo Item': costoUnit,
+        'Ganancia Item': totalItem - costoTotal,
         'Método Pago': v.metodo_pago,
         'Tipo Venta': v.tipo,
         'Cliente': cliente?.nombre ?? '',
