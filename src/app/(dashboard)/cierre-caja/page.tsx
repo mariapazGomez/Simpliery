@@ -3,7 +3,7 @@
 // ---------- Cierre de caja: reconciliación de fin de jornada ----------
 import { useState } from 'react'
 import { useCierreCaja } from '@/hooks/useCierreCaja'
-
+import { usePermisos } from '@/lib/permisos'
 import { useGo } from '@/lib/nav'
 import { fmtCLP, fmtNum } from '@/lib/format'
 import { Icon } from '@/components/icon'
@@ -18,6 +18,8 @@ type SumRow =
 export default function CierreCajaPage() {
   const go = useGo()
   const { resumen, cierres, loadingResumen, guardarCierre } = useCierreCaja()
+  const { puedeVerDinero } = usePermisos()
+  const verDinero = puedeVerDinero()
 
   const [efectivoContado, setEfectivoContado] = useState<number | ''>('')
   const [tarjetaContado,  setTarjetaContado]  = useState<number | ''>('')
@@ -69,7 +71,7 @@ export default function CierreCajaPage() {
 
   const sumRows: (SumRow | null)[] = [
     { label: 'Ventas totales del día', v: totalVentas, bold: true, tone: 'primary' },
-    { label: 'Ganancia estimada',      v: totalGanancia, tone: 'terra' },
+    verDinero ? { label: 'Ganancia estimada', v: totalGanancia, tone: 'terra' } : null,
     { divider: true },
     { label: 'Efectivo (sistema)',     v: totalEfect },
     { label: 'Tarjeta (sistema)',      v: totalTarjeta },
