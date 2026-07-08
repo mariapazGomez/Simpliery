@@ -44,6 +44,13 @@ export function fmtCLP(n: number): string {
 export function fmtNum(n: number): string {
   return Math.round(n).toLocaleString('es-CL')
 }
+/** Stock: enteros para unidades, hasta 3 decimales para peso/volumen. */
+export function fmtStock(n: number, unidad: string): string {
+  if (UNIT_IS_WEIGHT(unidad)) {
+    return (Math.round(n * 1000) / 1000).toLocaleString('es-CL', { maximumFractionDigits: 3 })
+  }
+  return Math.round(n).toLocaleString('es-CL')
+}
 export function fmtPct(n: number): string {
   return (Math.round(n * 10) / 10).toLocaleString('es-CL') + '%'
 }

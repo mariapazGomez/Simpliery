@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, type ReactNode } from 'react'
 import { Icon } from '@/components/icon'
 import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInput, Modal } from '@/components/ui'
 import { PRODUCT_UNITS } from '@/types'
-import { fmtCLP, fmtNum, fmtPct } from '@/lib/format'
+import { fmtCLP, fmtNum, fmtPct, fmtStock } from '@/lib/format'
 import { useProductos, type Producto, type InsertProducto } from '@/hooks/useProductos'
 import { useCategorias, type Categoria } from '@/hooks/useCategorias'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
@@ -525,7 +525,7 @@ export default function ProductosPage() {
                     <td className="num"><MarginBadge pct={p.margen_pct} minMargin={config.margen_minimo} /></td>
                     <td className="num">
                       <span style={{ fontWeight: 700, color: OUT_STOCK(p) ? 'var(--danger)' : LOW_STOCK(p) ? 'oklch(0.50 0.10 70)' : undefined }}>
-                        {fmtNum(p.stock)} {UNIT_ABBREV(p.unidad)}
+                        {fmtStock(p.stock, p.unidad)} {UNIT_ABBREV(p.unidad)}
                       </span>
                       {LOW_STOCK(p) && !OUT_STOCK(p) && <div style={{ fontSize: 11, color: 'oklch(0.50 0.10 70)', fontWeight: 600 }}>stock bajo</div>}
                       {OUT_STOCK(p) && <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600 }}>sin stock</div>}

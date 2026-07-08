@@ -7,7 +7,7 @@ import { useCategorias } from '@/hooks/useCategorias'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
 import { useClientes, type ClienteDB } from '@/hooks/useClientes'
 import { usePermisos } from '@/lib/permisos'
-import { fmtCLP, fmtNum, fmtPct, catColor, precioDespachoDe, UNIT_IS_WEIGHT } from '@/lib/format'
+import { fmtCLP, fmtNum, fmtPct, fmtStock, catColor, precioDespachoDe, UNIT_IS_WEIGHT } from '@/lib/format'
 import { Icon } from '@/components/icon'
 import { PageHeader, EmptyState, SearchBox, CatDot } from '@/components/ui'
 import { ComprobanteModal } from '@/components/comprobante'
@@ -74,7 +74,7 @@ function ProductPicker({
 
   const stockLabel = (p: Producto) => {
     const st = stockState(p)
-    return st === 'sin' ? 'Sin stock' : `${fmtNum(p.stock)} ${UNIT_IS_WEIGHT(p.unidad) ? p.unidad : 'u.'}`
+    return st === 'sin' ? 'Sin stock' : `${fmtStock(p.stock, p.unidad)} ${UNIT_IS_WEIGHT(p.unidad) ? p.unidad : 'u.'}`
   }
 
   return (
