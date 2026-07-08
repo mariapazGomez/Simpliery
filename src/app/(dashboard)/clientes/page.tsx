@@ -7,6 +7,7 @@ import { useTransacciones } from '@/hooks/useTransacciones'
 import type { VentaRow } from '@/hooks/useTransacciones'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
 import { fmtCLP, catColor } from '@/lib/format'
+import { parseExcel, downloadTemplate } from '@/lib/excel'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, SearchBox, CatDot, Field } from '@/components/ui'
 import { ClienteChip } from '@/components/cliente-chip'
@@ -360,17 +361,39 @@ function ClienteDetail({
 }
 
 /* ── Import modal ────────────────────────────────── */
-interface CsvPreview {
-  headers: string[]
-  rows: Record<string, string>[]
+const CL_HEADERS = ['nombre *', 'telefono', 'correo', 'ciudad', 'direccion', 'depto']
+const CL_EXAMPLE = {
+  'nombre *': 'María González',
+  telefono: '+56912345678',
+  correo: 'maria@email.com',
+  ciudad: 'Santiago',
+  direccion: 'Av. Providencia 1234',
+  depto: 'Apto 5B',
 }
-type Mapping = { nombre: string; telefono: string; correo: string; direccion: string; ciudad: string; depto: string }
 
-const CAMPO_LABEL: Record<keyof Mapping, string> = {
-  nombre: 'Nombre', telefono: 'Teléfono', correo: 'Correo',
-  direccion: 'Dirección', ciudad: 'Comuna / Ciudad', depto: 'Depto / Casa',
+interface ClienteRow {
+  nombre: string; telefono: string; correo: string
+  ciudad: string; direccion: string; depto: string
+  _errors: string[]; _idx: number
 }
-const EMPTY_MAPPING: Mapping = { nombre: '', telefono: '', correo: '', direccion: '', ciudad: '', depto: '' }
+
+function validateClienteRows(raw: Record<string, string>[]): ClienteRow[] {
+  return raw.map((r, i) => {
+    const nombre = (r['nombre *'] || r['nombre'] || '').trim()
+    const errors: string[] = []
+    if (!nombre) errors.push('Nombre requerido')
+    return {
+      nombre,
+      telefono: (r['telefono'] || '').trim(),
+      correo: (r['correo'] || '').trim(),
+      ciudad: (r['ciudad'] || '').trim(),
+      direccion: (r['direccion'] || '').trim(),
+      depto: (r['depto'] || '').trim(),
+      _errors: errors,
+      _idx: i + 1,
+    }
+  })
+}
 
 function ImportModal({
   onClose,
@@ -379,64 +402,39 @@ function ImportModal({
   onClose: () => void
   importar: (rows: Pick<import('@/hooks/useClientes').ClienteDB, 'nombre' | 'telefono' | 'correo' | 'ciudad' | 'direccion' | 'depto'>[]) => Promise<void>
 }) {
-  const [preview, setPreview] = useState<CsvPreview | null>(null)
+  const [rows, setRows] = useState<ClienteRow[] | null>(null)
   const [drag, setDrag] = useState(false)
-  const [mapping, setMapping] = useState<Mapping>(EMPTY_MAPPING)
-  const [importError, setImportError] = useState<string | null>(null)
+  const [fileErr, setFileErr] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
 
-  const parseCSV = (text: string): CsvPreview => {
-    const lines = text.split(/\r?\n/).filter(l => l.trim())
-    const sep = lines[0].includes(';') ? ';' : ','
-    const headers = lines[0].split(sep).map(h => h.replace(/["\s]/g, '').toLowerCase())
-    const rows = lines.slice(1).map(l => {
-      const cols = l.split(sep)
-      const obj: Record<string, string> = {}
-      headers.forEach((h, i) => (obj[h] = (cols[i] || '').replace(/"/g, '').trim()))
-      return obj
-    }).filter(r => Object.values(r).some(v => v))
-    return { headers, rows }
+  const handleFile = async (f: File) => {
+    setFileErr(null)
+    try {
+      const raw = await parseExcel(f)
+      setRows(validateClienteRows(raw))
+    } catch {
+      setFileErr('No se pudo leer el archivo. Usa la plantilla .xlsx o un CSV con las mismas columnas.')
+    }
   }
 
-  const handleFile = (f: File) => {
-    const r = new FileReader()
-    r.onload = (e) => {
-      try {
-        const { headers, rows } = parseCSV(String(e.target?.result ?? ''))
-        const autoMap: Mapping = { ...EMPTY_MAPPING }
-        headers.forEach(h => {
-          if (/nombre|name|cliente/i.test(h)) autoMap.nombre = h
-          else if (/tel[eé]?fono|phone|cel|whatsapp|fono/i.test(h)) autoMap.telefono = h
-          else if (/correo|email|mail/i.test(h)) autoMap.correo = h
-          else if (/direcci[oó]n|address|domicilio|calle/i.test(h)) autoMap.direccion = h
-          else if (/comuna|ciudad|city|sector|localidad/i.test(h)) autoMap.ciudad = h
-          else if (/depto|dpto|departamento|apartment|apto|casa/i.test(h)) autoMap.depto = h
-        })
-        setMapping(autoMap)
-        setPreview({ headers, rows })
-      } catch {
-        setImportError('Error al leer el archivo — revisa que sea CSV')
-      }
-    }
-    r.readAsText(f, 'UTF-8')
-  }
+  const errCount = rows?.filter(r => r._errors.length > 0).length ?? 0
+  const canImport = rows && rows.length > 0 && errCount === 0
 
   const doImport = async () => {
-    if (!preview) return
+    if (!rows || !canImport) return
     setImporting(true)
     try {
-      const rows = preview.rows.map(r => ({
-        nombre: (r[mapping.nombre] || 'Sin nombre').trim(),
-        telefono: r[mapping.telefono]?.trim() || null,
-        correo: r[mapping.correo]?.trim() || null,
-        direccion: r[mapping.direccion]?.trim() || null,
-        ciudad: r[mapping.ciudad]?.trim() || null,
-        depto: r[mapping.depto]?.trim() || null,
-      }))
-      await importar(rows)
+      await importar(rows.map(r => ({
+        nombre: r.nombre,
+        telefono: r.telefono || null,
+        correo: r.correo || null,
+        ciudad: r.ciudad || null,
+        direccion: r.direccion || null,
+        depto: r.depto || null,
+      })))
       onClose()
     } catch {
-      setImportError('Error al importar — intenta de nuevo')
+      setFileErr('Error al importar — intenta de nuevo')
       setImporting(false)
     }
   }
@@ -444,98 +442,94 @@ function ImportModal({
   return (
     <Modal
       title="Importar clientes"
-      sub="Sube un archivo CSV para agregar clientes al sistema"
+      sub="Descarga la plantilla, rellénala y súbela aquí"
       onClose={onClose}
-      width={580}
-      footer={
-        preview ? (
-          <>
-            <button className="btn btn-ghost" onClick={() => setPreview(null)}>Volver</button>
-            <button className="btn btn-primary" disabled={importing} onClick={doImport}>
-              <Icon name="check" size={15} />
-              {importing ? 'Importando…' : `Importar ${preview.rows.length} clientes`}
-            </button>
-          </>
-        ) : (
-          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-        )
-      }
+      width={700}
+      footer={rows ? (
+        <>
+          <button className="btn btn-ghost" onClick={() => { setRows(null); setFileErr(null) }}>Volver</button>
+          <button className="btn btn-primary" disabled={!canImport || importing} onClick={doImport}>
+            <Icon name="check" size={15} />
+            {importing ? 'Importando…' : errCount > 0 ? `${errCount} error${errCount > 1 ? 'es' : ''} — corrige el archivo` : `Importar ${rows.length} clientes`}
+          </button>
+        </>
+      ) : (
+        <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+      )}
     >
-      {importError && (
+      {fileErr && (
         <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--danger-tint)', color: 'var(--danger)', borderRadius: 10, fontWeight: 700, fontSize: 13.5 }}>
-          {importError}
+          {fileErr}
         </div>
       )}
-      {!preview ? (
-        <div>
+
+      {!rows ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Paso 1 */}
+          <div style={{ padding: '12px 16px', background: 'var(--surface-3)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--primary-tint)', color: 'var(--primary-700)', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>1</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Descarga la plantilla Excel</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 1 }}>Rellena los datos y guarda el archivo sin cambiar los encabezados</div>
+            </div>
+            <button className="btn btn-soft" style={{ flexShrink: 0 }} onClick={() => downloadTemplate('plantilla_clientes.xlsx', CL_HEADERS, CL_EXAMPLE)}>
+              <Icon name="download" size={14} />Plantilla .xlsx
+            </button>
+          </div>
+
+          {/* Paso 2 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--primary-tint)', color: 'var(--primary-700)', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>2</div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Sube el archivo relleno</div>
+          </div>
           <div
             onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
             onDragLeave={() => setDrag(false)}
             onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
-            style={{ border: `2px dashed ${drag ? 'var(--primary)' : 'var(--line-2)'}`, borderRadius: 16, padding: '36px 24px', textAlign: 'center', background: drag ? 'var(--primary-tint)' : 'var(--surface-3)', transition: '.15s', cursor: 'pointer' }}
-            onClick={() => document.getElementById('csv-input')?.click()}
+            style={{ border: `2px dashed ${drag ? 'var(--primary)' : 'var(--line-2)'}`, borderRadius: 14, padding: '28px 24px', textAlign: 'center', background: drag ? 'var(--primary-tint)' : 'var(--surface-3)', transition: '.15s', cursor: 'pointer' }}
+            onClick={() => document.getElementById('xl-clientes')?.click()}
           >
-            <Icon name="download" size={32} style={{ color: 'var(--ink-3)', marginBottom: 10 }} />
-            <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Arrastra tu archivo aquí</div>
-            <div style={{ color: 'var(--ink-3)', fontSize: 13.5, fontWeight: 600 }}>o haz clic para seleccionar</div>
-            <div style={{ color: 'var(--ink-3)', fontSize: 12, marginTop: 8, fontWeight: 600 }}>Formatos: CSV · TXT · Excel guardado como CSV</div>
+            <Icon name="download" size={28} style={{ color: 'var(--ink-3)', marginBottom: 8 }} />
+            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Arrastra tu archivo aquí</div>
+            <div style={{ color: 'var(--ink-3)', fontSize: 13, fontWeight: 600 }}>o haz clic para seleccionar</div>
+            <div style={{ color: 'var(--ink-3)', fontSize: 12, marginTop: 6, fontWeight: 600 }}>Acepta: .xlsx · .csv</div>
           </div>
-          <input id="csv-input" type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
-          <div style={{ marginTop: 16, padding: '13px 16px', background: 'var(--surface-3)', borderRadius: 11 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Columnas reconocidas automáticamente:</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {(Object.keys(CAMPO_LABEL) as (keyof Mapping)[]).map(k => (
-                <span key={k} className="chip chip-neutral">{CAMPO_LABEL[k]}</span>
-              ))}
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 8, fontWeight: 600 }}>
-              💡 Incluye <b>dirección</b>, <b>comuna</b> y <b>depto</b> para poder despachar a esos clientes con OptiRoute.
-            </div>
-          </div>
+          <input id="xl-clientes" type="file" accept=".xlsx,.csv,.txt" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
         </div>
       ) : (
         <div>
-          <div style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="chip chip-ok">
-              <Icon name="check" size={12} />
-              {preview.rows.length} clientes detectados
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+            <span className={`chip ${errCount === 0 ? 'chip-ok' : 'chip-danger'}`}>
+              <Icon name={errCount === 0 ? 'check' : 'alert'} size={12} />
+              {rows.length} fila{rows.length !== 1 ? 's' : ''}{errCount > 0 ? ` · ${errCount} con error` : ' — sin errores'}
             </span>
-            <span style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600 }}>Columnas del archivo: {preview.headers.join(', ')}</span>
+            {errCount > 0 && <span style={{ fontSize: 12.5, color: 'var(--danger)', fontWeight: 700 }}>Corrige el Excel y vuelve a subir</span>}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-            {(Object.entries(mapping) as [keyof Mapping, string][]).map(([field, val]) => (
-              <label key={field} className="field">
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-2)' }}>{CAMPO_LABEL[field]}</span>
-                <select className="select" value={val} onChange={(e) => setMapping(m => ({ ...m, [field]: e.target.value }))}>
-                  <option value="">(no importar)</option>
-                  {preview.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </label>
-            ))}
-          </div>
-          <div style={{ overflowX: 'auto', border: '1px solid var(--line)', borderRadius: 10 }}>
-            <table className="tbl" style={{ fontSize: 12.5 }}>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 340, border: '1px solid var(--line)', borderRadius: 10 }}>
+            <table className="tbl" style={{ fontSize: 12.5, minWidth: 560 }}>
               <thead>
                 <tr>
-                  <th>Nombre</th><th>Teléfono</th><th>Correo</th>
-                  <th>Dirección</th><th>Comuna</th><th>Depto</th>
+                  <th style={{ width: 32 }}>#</th>
+                  <th>Nombre *</th><th>Teléfono</th><th>Correo</th>
+                  <th>Ciudad</th><th>Dirección</th><th>Depto</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {preview.rows.slice(0, 5).map((r, i) => (
-                  <tr key={i}>
-                    <td>{r[mapping.nombre] || '—'}</td>
-                    <td>{r[mapping.telefono] || '—'}</td>
-                    <td>{r[mapping.correo] || '—'}</td>
-                    <td>{r[mapping.direccion] || '—'}</td>
-                    <td>{r[mapping.ciudad] || '—'}</td>
-                    <td>{r[mapping.depto] || '—'}</td>
+                {rows.map((r) => (
+                  <tr key={r._idx} style={{ background: r._errors.length > 0 ? 'color-mix(in srgb, var(--danger) 8%, transparent)' : undefined }}>
+                    <td style={{ color: 'var(--ink-3)', fontSize: 11 }}>{r._idx}</td>
+                    <td style={{ fontWeight: 700, color: !r.nombre ? 'var(--danger)' : undefined }}>{r.nombre || '(vacío)'}</td>
+                    <td>{r.telefono || '—'}</td>
+                    <td>{r.correo || '—'}</td>
+                    <td>{r.ciudad || '—'}</td>
+                    <td>{r.direccion || '—'}</td>
+                    <td>{r.depto || '—'}</td>
+                    <td>{r._errors.length > 0 && <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 700, whiteSpace: 'nowrap' }}>⚠ {r._errors.join(', ')}</span>}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {preview.rows.length > 5 && <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--ink-3)', marginTop: 8, fontWeight: 600 }}>...y {preview.rows.length - 5} más</div>}
         </div>
       )}
     </Modal>

@@ -135,6 +135,18 @@ export function useProductos() {
     setProductos(ps => ps.map(p => p.id === id ? { ...p, stock: p.stock + qty } : p))
   }, [negocioId])
 
+  const importarMasivo = useCallback(async (rows: InsertProducto[]) => {
+    if (!negocioId) throw new Error('Negocio no disponible')
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('productos')
+      .insert(rows.map((p) => ({ ...p, negocio_id: negocioId, activo: true })))
+      .select('*')
+    if (error) throw error
+    const nuevos = ((data ?? []) as Record<string, unknown>[]).map(calcular)
+    setProductos((ps) => [...ps, ...nuevos])
+  }, [negocioId])
+
   const ajustar = useCallback(async (id: string, nuevoStock: number, nota?: string) => {
     if (!negocioId) return
     const supabase = createClient()
@@ -148,5 +160,5 @@ export function useProductos() {
     setProductos(ps => ps.map(p => p.id === id ? { ...p, stock: nuevoStock } : p))
   }, [negocioId])
 
-  return { productos, loading, agregar, actualizar, eliminar, reponer, ajustar }
+  return { productos, loading, agregar, actualizar, eliminar, reponer, ajustar, importarMasivo }
 }

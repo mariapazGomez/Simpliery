@@ -5,6 +5,7 @@ import { Icon } from '@/components/icon'
 import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInput, Modal } from '@/components/ui'
 import { PRODUCT_UNITS } from '@/types'
 import { fmtCLP, fmtNum, fmtPct, fmtStock } from '@/lib/format'
+import { parseExcel, downloadTemplate } from '@/lib/excel'
 import { useProductos, type Producto, type InsertProducto } from '@/hooks/useProductos'
 import { useCategorias, type Categoria } from '@/hooks/useCategorias'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
@@ -370,9 +371,194 @@ function ProductoForm({
   )
 }
 
+/* ---------- Import masivo ---------- */
+const PR_HEADERS = ['nombre *', 'categoria', 'unidad *', 'precio *', 'costo', 'stock', 'stock_minimo', 'precio_despacho']
+const PR_EXAMPLE = {
+  'nombre *': 'Queso Gouda',
+  categoria: 'Quesos',
+  'unidad *': 'kg',
+  'precio *': '15000',
+  costo: '9000',
+  stock: '5',
+  stock_minimo: '2',
+  precio_despacho: '16500',
+}
+
+const UNITS_NORM: Record<string, string> = Object.fromEntries(
+  PRODUCT_UNITS.map((u) => [u.toLowerCase(), u]),
+)
+
+interface ProdRow {
+  nombre: string; categoria: string; unidad: string; precio: number
+  costo: number; stock: number; stock_minimo: number; precio_despacho: number | null
+  _errors: string[]; _idx: number
+}
+
+function validateProdRows(raw: Record<string, string>[]): ProdRow[] {
+  return raw.map((r, i) => {
+    const nombre = (r['nombre *'] || r['nombre'] || '').trim()
+    const unidadRaw = (r['unidad *'] || r['unidad'] || '').trim()
+    const unidad = UNITS_NORM[unidadRaw.toLowerCase()] ?? unidadRaw
+    const precio = parseFloat((r['precio *'] || r['precio'] || '').replace(',', '.').replace(/[^0-9.]/g, ''))
+    const costo = parseFloat((r['costo'] || '0').replace(',', '.').replace(/[^0-9.]/g, '')) || 0
+    const stock = parseFloat((r['stock'] || '0').replace(',', '.')) || 0
+    const stock_minimo = parseFloat((r['stock_minimo'] || '0').replace(',', '.')) || 0
+    const dpRaw = (r['precio_despacho'] || '').trim()
+    const precio_despacho = dpRaw ? (parseFloat(dpRaw.replace(',', '.').replace(/[^0-9.]/g, '')) || null) : null
+
+    const errors: string[] = []
+    if (!nombre) errors.push('Nombre requerido')
+    if (!unidad || !UNITS_NORM[unidad.toLowerCase()]) errors.push(`Unidad inválida (usa: ${PRODUCT_UNITS.join(', ')})`)
+    if (isNaN(precio) || precio <= 0) errors.push('Precio debe ser mayor a 0')
+
+    return { nombre, categoria: (r['categoria'] || '').trim(), unidad, precio: isNaN(precio) ? 0 : precio, costo, stock, stock_minimo, precio_despacho, _errors: errors, _idx: i + 1 }
+  })
+}
+
+function ImportProductosModal({
+  onClose,
+  importarMasivo,
+}: {
+  onClose: () => void
+  importarMasivo: (rows: InsertProducto[]) => Promise<void>
+}) {
+  const [rows, setRows] = useState<ProdRow[] | null>(null)
+  const [drag, setDrag] = useState(false)
+  const [fileErr, setFileErr] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+
+  const handleFile = async (f: File) => {
+    setFileErr(null)
+    try {
+      const raw = await parseExcel(f)
+      setRows(validateProdRows(raw))
+    } catch {
+      setFileErr('No se pudo leer el archivo. Usa la plantilla .xlsx o un CSV con las mismas columnas.')
+    }
+  }
+
+  const errCount = rows?.filter((r) => r._errors.length > 0).length ?? 0
+  const canImport = rows && rows.length > 0 && errCount === 0
+
+  const doImport = async () => {
+    if (!rows || !canImport) return
+    setImporting(true)
+    try {
+      await importarMasivo(rows.map((r) => ({
+        nombre: r.nombre, categoria: r.categoria, unidad: r.unidad,
+        precio: r.precio, costo: r.costo, stock: r.stock,
+        stock_minimo: r.stock_minimo, precio_despacho: r.precio_despacho,
+        foto_url: null, kg_por_unidad: null, orden: 0,
+      })))
+      onClose()
+    } catch {
+      setFileErr('Error al importar — intenta de nuevo')
+      setImporting(false)
+    }
+  }
+
+  return (
+    <Modal
+      title="Importar productos"
+      sub="Descarga la plantilla, rellénala y súbela aquí"
+      onClose={onClose}
+      width={780}
+      footer={rows ? (
+        <>
+          <button className="btn btn-ghost" onClick={() => { setRows(null); setFileErr(null) }}>Volver</button>
+          <button className="btn btn-primary" disabled={!canImport || importing} onClick={doImport}>
+            <Icon name="check" size={15} />
+            {importing ? 'Importando…' : errCount > 0 ? `${errCount} error${errCount > 1 ? 'es' : ''} — corrige el archivo` : `Importar ${rows.length} productos`}
+          </button>
+        </>
+      ) : (
+        <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+      )}
+    >
+      {fileErr && (
+        <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--danger-tint)', color: 'var(--danger)', borderRadius: 10, fontWeight: 700, fontSize: 13.5 }}>
+          {fileErr}
+        </div>
+      )}
+      {!rows ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '12px 16px', background: 'var(--surface-3)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--primary-tint)', color: 'var(--primary-700)', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>1</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>Descarga la plantilla Excel</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 1 }}>Rellena los datos y guarda el archivo sin cambiar los encabezados</div>
+            </div>
+            <button className="btn btn-soft" style={{ flexShrink: 0 }} onClick={() => downloadTemplate('plantilla_productos.xlsx', PR_HEADERS, PR_EXAMPLE)}>
+              <Icon name="download" size={14} />Plantilla .xlsx
+            </button>
+          </div>
+          <div style={{ padding: '10px 14px', background: 'var(--warn-tint)', borderRadius: 10, fontSize: 12.5, color: 'oklch(0.45 0.10 70)', fontWeight: 700, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <Icon name="alert" size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+            <div>Unidades válidas: <b>{PRODUCT_UNITS.join(' · ')}</b>. Los campos con * son obligatorios.</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'var(--primary-tint)', color: 'var(--primary-700)', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>2</div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Sube el archivo relleno</div>
+          </div>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+            style={{ border: `2px dashed ${drag ? 'var(--primary)' : 'var(--line-2)'}`, borderRadius: 14, padding: '28px 24px', textAlign: 'center', background: drag ? 'var(--primary-tint)' : 'var(--surface-3)', transition: '.15s', cursor: 'pointer' }}
+            onClick={() => document.getElementById('xl-productos')?.click()}
+          >
+            <Icon name="download" size={28} style={{ color: 'var(--ink-3)', marginBottom: 8 }} />
+            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Arrastra tu archivo aquí</div>
+            <div style={{ color: 'var(--ink-3)', fontSize: 13, fontWeight: 600 }}>o haz clic para seleccionar</div>
+            <div style={{ color: 'var(--ink-3)', fontSize: 12, marginTop: 6, fontWeight: 600 }}>Acepta: .xlsx · .csv</div>
+          </div>
+          <input id="xl-productos" type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+            <span className={`chip ${errCount === 0 ? 'chip-ok' : 'chip-danger'}`}>
+              <Icon name={errCount === 0 ? 'check' : 'alert'} size={12} />
+              {rows.length} fila{rows.length !== 1 ? 's' : ''}{errCount > 0 ? ` · ${errCount} con error` : ' — sin errores'}
+            </span>
+            {errCount > 0 && <span style={{ fontSize: 12.5, color: 'var(--danger)', fontWeight: 700 }}>Corrige el Excel y vuelve a subir</span>}
+          </div>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 340, border: '1px solid var(--line)', borderRadius: 10 }}>
+            <table className="tbl" style={{ fontSize: 12.5, minWidth: 680 }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 32 }}>#</th>
+                  <th>Nombre *</th><th>Categoría</th><th>Unidad *</th>
+                  <th className="num">Precio *</th><th className="num">Costo</th>
+                  <th className="num">Stock</th><th className="num">Stock min.</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r._idx} style={{ background: r._errors.length > 0 ? 'color-mix(in srgb, var(--danger) 8%, transparent)' : undefined }}>
+                    <td style={{ color: 'var(--ink-3)', fontSize: 11 }}>{r._idx}</td>
+                    <td style={{ fontWeight: 700, color: !r.nombre ? 'var(--danger)' : undefined }}>{r.nombre || '(vacío)'}</td>
+                    <td>{r.categoria || '—'}</td>
+                    <td style={{ color: r._errors.some(e => e.includes('Unidad')) ? 'var(--danger)' : undefined }}>{r.unidad || '—'}</td>
+                    <td className="num tnum" style={{ color: !r.precio ? 'var(--danger)' : undefined }}>{r.precio > 0 ? fmtCLP(r.precio) : '—'}</td>
+                    <td className="num tnum">{r.costo > 0 ? fmtCLP(r.costo) : '—'}</td>
+                    <td className="num tnum">{r.stock}</td>
+                    <td className="num tnum">{r.stock_minimo}</td>
+                    <td>{r._errors.length > 0 && <span style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 700, whiteSpace: 'nowrap' }}>⚠ {r._errors.join('; ')}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 /* ---------- Pantalla principal ---------- */
 export default function ProductosPage() {
-  const { productos, loading, agregar, actualizar, eliminar } = useProductos()
+  const { productos, loading, agregar, actualizar, eliminar, importarMasivo } = useProductos()
   const { categorias, agregar: agregarCat, renombrar: renombrarCat, eliminar: eliminarCat } = useCategorias()
   const { config } = useConfiguracion()
 
@@ -382,6 +568,7 @@ export default function ProductosPage() {
   const [cat, setCat] = useState('Todas')
   const [form, setForm] = useState(false)
   const [edit, setEdit] = useState<Producto | null>(null)
+  const [showImport, setShowImport] = useState(false)
   const [sort, setSort] = useState<{ k: keyof Producto; dir: number }>({ k: 'nombre', dir: 1 })
   const [dragRow, setDragRow] = useState<string | null>(null)
   const [overRow, setOverRow] = useState<string | null>(null)
@@ -440,6 +627,9 @@ export default function ProductosPage() {
     <div className="fade-in">
       <PageHeader title="Productos" sub={`${productos.length} producto${productos.length !== 1 ? 's' : ''} en tu catálogo`}>
         <SearchBox value={q} onChange={setQ} placeholder="Buscar producto…" />
+        <button className="btn btn-soft" onClick={() => setShowImport(true)}>
+          <Icon name="download" size={16} />Importar
+        </button>
         <button className="btn btn-primary" onClick={() => setForm(true)}>
           <Icon name="plus" size={16} />Agregar
         </button>
@@ -569,6 +759,14 @@ export default function ProductosPage() {
           margenMin={config.margen_minimo}
           onSave={handleEdit}
           onClose={() => setEdit(null)}
+        />
+      )}
+
+      {/* Modal importación masiva */}
+      {showImport && (
+        <ImportProductosModal
+          onClose={() => setShowImport(false)}
+          importarMasivo={importarMasivo}
         />
       )}
     </div>
