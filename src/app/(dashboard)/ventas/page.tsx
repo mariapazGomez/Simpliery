@@ -64,12 +64,25 @@ function ProductPicker({
 }) {
   const [cat, setCat] = useState('Todas')
   const [q, setQ] = useState('')
-  const cats = useMemo(() => ['Todas', ...catNombres], [catNombres])
+
+  // Chips de categoría ordenados por ventas totales de sus productos
+  const cats = useMemo(() => {
+    const totalPorCat = new Map<string, number>()
+    for (const p of productos) {
+      if (p.categoria) totalPorCat.set(p.categoria, (totalPorCat.get(p.categoria) ?? 0) + p.vendido)
+    }
+    const sorted = [...catNombres].sort((a, b) => (totalPorCat.get(b) ?? 0) - (totalPorCat.get(a) ?? 0))
+    return ['Todas', ...sorted]
+  }, [catNombres, productos])
+
   const list = useMemo(() => {
+    const term = q.trim().toLowerCase()
     return productos
-      .filter((p) => (cat === 'Todas' || p.categoria === cat) && p.nombre.toLowerCase().includes(q.toLowerCase()))
-      .sort((a, b) => (a.orden ?? 1e9) - (b.orden ?? 1e9) || a.nombre.localeCompare(b.nombre))
-      .slice(0, 40)
+      .filter((p) => {
+        if (term) return p.nombre.toLowerCase().includes(term) || p.categoria.toLowerCase().includes(term)
+        return cat === 'Todas' || p.categoria === cat
+      })
+      .sort((a, b) => b.vendido - a.vendido || (a.orden ?? 1e9) - (b.orden ?? 1e9) || a.nombre.localeCompare(b.nombre))
   }, [productos, cat, q])
 
   const stockLabel = (p: Producto) => {
