@@ -18,25 +18,22 @@ export function useCategorias() {
     let cancelled = false
     const supabase = createClient()
 
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    ;(async () => {
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user || cancelled) return
-      supabase.from('perfiles').select('negocio_id').eq('id', user.id).single()
-        .then(({ data }) => {
-          if (cancelled) return
-          const nid = (data as { negocio_id: string } | null)?.negocio_id
-          if (nid) setNegocioId(nid)
-        })
-    })
+      const { data } = await supabase.from('perfiles').select('negocio_id').eq('id', user.id).single()
+      if (cancelled) return
+      const nid = (data as { negocio_id: string } | null)?.negocio_id
+      if (nid) setNegocioId(nid)
+    })()
 
-    supabase
-      .from('categorias')
-      .select('id, nombre, orden')
-      .order('orden')
-      .then((result: { data: Categoria[] | null }) => {
-        if (cancelled) return
-        if (result.data) setCategorias(result.data)
-        setLoading(false)
-      })
+    ;(async () => {
+      const result = await supabase.from('categorias').select('id, nombre, orden').order('orden')
+      if (cancelled) return
+      if (result.data) setCategorias(result.data as Categoria[])
+      setLoading(false)
+    })()
+
     return () => { cancelled = true }
   }, [])
 

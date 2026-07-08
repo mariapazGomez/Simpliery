@@ -241,6 +241,39 @@ function ClienteSelector({
 // ---------------------------------------------------------------------------
 // CartItemRow
 
+function QtyInput({ value, unit, onChange }: { value: number; unit: string; onChange: (v: number) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [tmp, setTmp] = useState('')
+  const abbrev = unit === 'kg' ? 'kg' : unit === 'gramo' ? 'g' : unit === 'litro' ? 'L' : unit === 'mililitro' ? 'mL' : unit
+  const commit = (raw: string) => {
+    const v = parseFloat(raw.replace(',', '.'))
+    if (!isNaN(v) && v > 0) onChange(Math.round(v * 1000) / 1000)
+  }
+  if (editing) {
+    return (
+      <input
+        className="tnum"
+        autoFocus
+        inputMode="decimal"
+        value={tmp}
+        style={{ width: 64, textAlign: 'center', fontWeight: 800, fontSize: 14, border: '1px solid var(--primary)', borderRadius: 6, padding: '2px 4px', outline: 'none', background: 'var(--surface)' }}
+        onChange={(e) => setTmp(e.target.value.replace(/[^0-9.,]/g, ''))}
+        onBlur={() => { commit(tmp); setEditing(false) }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { commit(tmp); setEditing(false) } if (e.key === 'Escape') setEditing(false) }}
+      />
+    )
+  }
+  return (
+    <button
+      onClick={() => { setTmp(String(value)); setEditing(true) }}
+      title="Toca para editar cantidad"
+      style={{ minWidth: 52, textAlign: 'center', fontWeight: 800, fontSize: 13.5, border: '1px solid var(--line)', borderRadius: 6, padding: '2px 6px', background: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+    >
+      {value}<span style={{ fontSize: 11, color: 'var(--ink-3)', marginLeft: 2 }}>{abbrev}</span>
+    </button>
+  )
+}
+
 function InlinePriceEdit({ value, label, onChange }: { value: number; label: string; onChange: (v: number) => void }) {
   const [edit, setEdit] = useState(false)
   const [tmp, setTmp] = useState('')
@@ -267,17 +300,20 @@ function InlinePriceEdit({ value, label, onChange }: { value: number; label: str
 
 function CartItemRow({
   i, verDinero,
-  setQtySimple, setItemPrice, remove,
+  setQtySimple, setQtyDirect, setItemPrice, remove,
 }: {
   i: CartItem
   verDinero: boolean
   setQtySimple: (id: string, d: number) => void
+  setQtyDirect: (id: string, v: number) => void
   setItemPrice: (id: string, v: number) => void
   remove: (id: string) => void
 }) {
   const gain = (i.precio - i.costo) * i.qty
   const gainPct = i.precio ? ((i.precio - i.costo) / i.precio) * 100 : 0
   const priceChanged = i.precio !== i.originalPrecio
+  const isWeight = UNIT_IS_WEIGHT(i.unidad)
+  const step = isWeight ? 0.5 : 1
   return (
     <div style={{ padding: '11px 18px', borderBottom: '1px solid var(--line)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -285,9 +321,11 @@ function CartItemRow({
           <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.nombre}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.productId, -1)}><Icon name="minus" size={13} /></button>
-          <span className="tnum" style={{ width: 20, textAlign: 'center', fontWeight: 800, fontSize: 14 }}>{i.qty}</span>
-          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.productId, 1)}><Icon name="plus" size={13} /></button>
+          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.productId, -step)}><Icon name="minus" size={13} /></button>
+          {isWeight
+            ? <QtyInput value={i.qty} unit={i.unidad} onChange={(v) => setQtyDirect(i.productId, v)} />
+            : <span className="tnum" style={{ width: 20, textAlign: 'center', fontWeight: 800, fontSize: 14 }}>{i.qty}</span>}
+          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.productId, step)}><Icon name="plus" size={13} /></button>
         </div>
         <div className="tnum" style={{ width: 72, textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{fmtCLP(i.precio * i.qty)}</div>
         <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24, color: 'var(--ink-3)' }} onClick={() => remove(i.productId)} title="Quitar"><Icon name="x" size={13} /></button>
@@ -388,8 +426,20 @@ export default function VentasPage() {
       const p = productos.find((x) => x.id === id)
       if (p && baseEnCarro(id) + d > p.stock) return
     }
-    setCart((c) => c.map((i) => i.productId === id ? { ...i, qty: Math.max(1, i.qty + d), unidadesBase: Math.max(1, i.qty + d) } : i))
+    setCart((c) => c.map((i) => {
+      if (i.productId !== id) return i
+      const min = UNIT_IS_WEIGHT(i.unidad) ? 0.5 : 1
+      const newQty = Math.max(min, Math.round((i.qty + d) * 1000) / 1000)
+      return { ...i, qty: newQty, unidadesBase: newQty }
+    }))
   }, [baseEnCarro, productos])
+
+  const setQtyDirect = useCallback((id: string, v: number) => {
+    const p = productos.find((x) => x.id === id)
+    if (p && v > p.stock) return
+    const clamped = Math.max(0.1, Math.round(v * 1000) / 1000)
+    setCart((c) => c.map((i) => i.productId === id ? { ...i, qty: clamped, unidadesBase: clamped } : i))
+  }, [productos])
 
   const setItemPrice = useCallback((id: string, newPrice: number) =>
     setCart((c) => c.map((i) => i.productId === id ? { ...i, precio: Math.max(0, newPrice) } : i)), [])
@@ -502,7 +552,7 @@ export default function VentasPage() {
               <EmptyState icon="ventas" title="Carrito vacío" text="Vuelve al catálogo y elige productos." />
             ) : (
               <div className="card">
-                {cart.map((i) => <CartItemRow key={i.productId} i={i} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
+                {cart.map((i) => <CartItemRow key={i.productId} i={i} setQtySimple={setQtySimple} setQtyDirect={setQtyDirect} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
                 <div style={{ padding: '14px 18px' }}>
                   {!showDiscount && discAmt === 0 ? (
                     <button className="btn btn-ghost" style={{ color: 'var(--primary-700)', fontWeight: 700, padding: 0 }} onClick={() => setShowDiscount(true)}><Icon name="tag" size={14} />Dar descuento</button>
@@ -633,7 +683,7 @@ export default function VentasPage() {
           <div style={{ maxHeight: 240, overflowY: 'auto', borderTop: '1px solid var(--line)' }}>
             {cart.length === 0
               ? <EmptyState icon="ventas" title="Carrito vacío" text="Elige productos de la izquierda para empezar." />
-              : cart.map((i) => <CartItemRow key={i.productId} i={i} setQtySimple={setQtySimple} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
+              : cart.map((i) => <CartItemRow key={i.productId} i={i} setQtySimple={setQtySimple} setQtyDirect={setQtyDirect} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
           </div>
 
           {/* Totales + pago */}
