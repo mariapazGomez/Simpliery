@@ -471,8 +471,8 @@ function ImportVentasModal({ onClose, importarMasivoVentas }: {
             >
               <Icon name="arrowUp" size={28} style={{ color: 'var(--ink-3)', marginBottom: 8 }} />
               <div style={{ fontWeight: 700, fontSize: 14 }}>Arrastra aquí el archivo</div>
-              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 4 }}>o haz clic para seleccionar (.xlsx)</div>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 4 }}>o haz clic para seleccionar (.xlsx o .csv)</div>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
             </div>
           </div>
 
