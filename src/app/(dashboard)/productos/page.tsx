@@ -28,7 +28,7 @@ interface FormState {
 
 /* ---------- Barra de categorías + gestión ---------- */
 function CategoriaBar({
-  categorias, productos, cat, onSelect, agregar, renombrar, eliminar,
+  categorias, productos, cat, onSelect, agregar, renombrar, eliminar, sincronizarDesdeProductos,
 }: {
   categorias: Categoria[]
   productos: Producto[]
@@ -37,14 +37,31 @@ function CategoriaBar({
   agregar: (nombre: string) => Promise<void>
   renombrar: (id: string, nombre: string) => Promise<void>
   eliminar: (id: string) => Promise<void>
+  sincronizarDesdeProductos: () => Promise<number>
 }) {
   const [showNueva,     setShowNueva]     = useState(false)
   const [showGestionar, setShowGestionar] = useState(false)
   const [newCat,        setNewCat]        = useState('')
   const [renamingId,    setRenamingId]    = useState<string | null>(null)
   const [renameVal,     setRenameVal]     = useState('')
+  const [sincing,       setSincing]       = useState(false)
 
   const countFor = (nombre: string) => productos.filter(p => p.categoria === nombre).length
+
+  const existentes = new Set(categorias.map(c => c.nombre))
+  const huerfanas = [...new Set(productos.map(p => p.categoria).filter(Boolean))].filter(n => !existentes.has(n))
+
+  const handleSincronizar = async () => {
+    setSincing(true)
+    try {
+      const n = await sincronizarDesdeProductos()
+      if (n === 0) window.alert('Todas las categorías ya están sincronizadas.')
+    } catch (e) {
+      window.alert('Error al sincronizar: ' + errMsg(e))
+    } finally {
+      setSincing(false)
+    }
+  }
 
   const errMsg = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'Error desconocido')
 
@@ -108,6 +125,17 @@ function CategoriaBar({
 
         {/* Acciones */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {huerfanas.length > 0 && (
+            <button
+              onClick={handleSincronizar}
+              disabled={sincing}
+              title={`Categorías en productos sin registrar: ${huerfanas.join(', ')}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 12, border: '1px solid var(--warn)', background: 'oklch(0.97 0.03 70)', color: 'oklch(0.45 0.12 70)', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Icon name="refresh" size={14} style={sincing ? { animation: 'navspin .6s linear infinite' } : undefined} />
+              {sincing ? 'Sincronizando…' : `Sincronizar ${huerfanas.length} categoría${huerfanas.length > 1 ? 's' : ''}`}
+            </button>
+          )}
           <button
             onClick={() => setShowNueva(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
@@ -418,9 +446,11 @@ function validateProdRows(raw: Record<string, string>[]): ProdRow[] {
 function ImportProductosModal({
   onClose,
   importarMasivo,
+  sincronizarDesdeProductos,
 }: {
   onClose: () => void
   importarMasivo: (rows: InsertProducto[]) => Promise<void>
+  sincronizarDesdeProductos: () => Promise<number>
 }) {
   const [rows, setRows] = useState<ProdRow[] | null>(null)
   const [drag, setDrag] = useState(false)
@@ -450,6 +480,7 @@ function ImportProductosModal({
         stock_minimo: r.stock_minimo, precio_despacho: r.precio_despacho,
         foto_url: null, kg_por_unidad: null, orden: 0,
       })))
+      await sincronizarDesdeProductos()
       onClose()
     } catch {
       setFileErr('Error al importar — intenta de nuevo')
@@ -559,7 +590,7 @@ function ImportProductosModal({
 /* ---------- Pantalla principal ---------- */
 export default function ProductosPage() {
   const { productos, loading, agregar, actualizar, eliminar, importarMasivo } = useProductos()
-  const { categorias, agregar: agregarCat, renombrar: renombrarCat, eliminar: eliminarCat } = useCategorias()
+  const { categorias, agregar: agregarCat, renombrar: renombrarCat, eliminar: eliminarCat, sincronizarDesdeProductos } = useCategorias()
   const { config } = useConfiguracion()
 
   const catNombres = useMemo(() => categorias.map(c => c.nombre), [categorias])
@@ -643,6 +674,7 @@ export default function ProductosPage() {
         agregar={agregarCat}
         renombrar={renombrarCat}
         eliminar={eliminarCat}
+        sincronizarDesdeProductos={sincronizarDesdeProductos}
       />
 
       {loading ? (
@@ -767,6 +799,7 @@ export default function ProductosPage() {
         <ImportProductosModal
           onClose={() => setShowImport(false)}
           importarMasivo={importarMasivo}
+          sincronizarDesdeProductos={sincronizarDesdeProductos}
         />
       )}
     </div>

@@ -69,16 +69,34 @@ export function useProductos() {
       const nid = (perfil as { negocio_id: string }).negocio_id
       setNegocioId(nid)
 
-      const { data } = await supabase
-        .from('productos')
-        .select('*')
-        .eq('negocio_id', nid)
-        .eq('activo', true)
-        .order('categoria')
-        .order('orden')
-        .order('nombre')
+      const [{ data }, { data: vendidoData }] = await Promise.all([
+        supabase
+          .from('productos')
+          .select('*')
+          .eq('negocio_id', nid)
+          .eq('activo', true)
+          .order('categoria')
+          .order('orden')
+          .order('nombre'),
+        supabase
+          .from('venta_items')
+          .select('producto_id, qty')
+          .eq('negocio_id', nid)
+          .not('producto_id', 'is', null)
+          .range(0, 49999),
+      ])
+
       if (!cancelled) {
-        setProductos(((data ?? []) as Record<string, unknown>[]).map(calcular))
+        const vendidoMap = new Map<string, number>()
+        for (const row of (vendidoData ?? []) as { producto_id: string; qty: number }[]) {
+          vendidoMap.set(row.producto_id, (vendidoMap.get(row.producto_id) ?? 0) + Number(row.qty))
+        }
+        setProductos(
+          ((data ?? []) as Record<string, unknown>[]).map(r => ({
+            ...calcular(r),
+            vendido: vendidoMap.get(r.id as string) ?? 0,
+          }))
+        )
         setLoading(false)
       }
     }

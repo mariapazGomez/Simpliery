@@ -70,5 +70,39 @@ export function useCategorias() {
     setCategorias(cs => cs.filter(c => c.id !== id))
   }, [])
 
-  return { categorias, loading, agregar, renombrar, eliminar }
+  // Inserta en categorias las que existan en productos pero no en la tabla.
+  // Retorna la cantidad de categorías nuevas insertadas.
+  const sincronizarDesdeProductos = useCallback(async (): Promise<number> => {
+    if (!negocioId) return 0
+    const supabase = createClient()
+    const { data: prods } = await supabase
+      .from('productos')
+      .select('categoria')
+      .eq('negocio_id', negocioId)
+      .eq('activo', true)
+    if (!prods) return 0
+
+    const enProductos = [...new Set(
+      (prods as { categoria: string }[]).map(p => p.categoria).filter(Boolean)
+    )]
+    const existentes = new Set(categorias.map(c => c.nombre))
+    const faltantes = enProductos.filter(n => !existentes.has(n))
+    if (faltantes.length === 0) return 0
+
+    const maxOrden = categorias.length > 0 ? Math.max(...categorias.map(c => c.orden)) : 0
+    const nuevas = faltantes.map((nombre, i) => ({
+      nombre,
+      orden: maxOrden + i + 1,
+      negocio_id: negocioId,
+    }))
+    const { data, error } = await supabase
+      .from('categorias')
+      .insert(nuevas)
+      .select('id, nombre, orden')
+    if (error) throw error
+    setCategorias(cs => [...cs, ...(data as Categoria[])])
+    return faltantes.length
+  }, [negocioId, categorias])
+
+  return { categorias, loading, agregar, renombrar, eliminar, sincronizarDesdeProductos }
 }
