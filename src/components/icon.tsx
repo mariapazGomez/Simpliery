@@ -59,6 +59,8 @@ const ICONS: Record<string, string> = {
   piggy: 'M19 11V9a7 7 0 00-14 0v1a2 2 0 00-2 2v1a2 2 0 002 2v1a4 4 0 004 4h6a4 4 0 004-4v-1a2 2 0 002-2v-1a2 2 0 00-2-2zm-7 6h-2v-1h2v1zm3-4H9a1 1 0 010-2h6a1 1 0 010 2z',
   nomina: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm13 3l-4 4-2-2',
   megaphone: 'M18 8a2 2 0 000 4M2 8v6a2 2 0 002 2h1.5v4l4-4H12a2 2 0 002-2V8a2 2 0 00-2-2H4a2 2 0 00-2 2z',
+  refresh: 'M1 4v6h6M23 20v-6h-6M20.5 9A9 9 0 0010 3c-2.4 0-4.7.9-6.5 2.5L1 9m22 6-4.5 4.5A9 9 0 0114 21c-2.4 0-4.7-.9-6.5-2.5L3.5 15',
+  arrowDown: 'M12 5v14M19 12l-7 7-7-7',
 }
 
 interface IconProps {

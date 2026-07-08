@@ -30,7 +30,7 @@ function fechaHora(d: Date) {
 }
 
 export default function TransaccionesPage() {
-  const { ventas, anular, actualizar, importarMasivoVentas } = useTransacciones()
+  const { ventas, loading, anular, actualizar, importarMasivoVentas, recargar } = useTransacciones()
   const { config } = useConfiguracion()
   const { productos } = useProductos()
   const [filtro, setFiltro] = useState<Filtro>('todas')
@@ -39,6 +39,20 @@ export default function TransaccionesPage() {
   const [editar, setEditar] = useState<VentaRow | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [recargando, setRecargando] = useState(false)
+
+  // Auto-refresca cuando el usuario vuelve a esta pestaña
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') recargar() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [recargar])
+
+  const handleRecargar = async () => {
+    setRecargando(true)
+    await recargar()
+    setRecargando(false)
+  }
 
   const filtradas = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -76,6 +90,16 @@ export default function TransaccionesPage() {
           <Icon name="receipt" size={13} />
           {m.count} transaccion{m.count === 1 ? '' : 'es'}
         </div>
+        <button
+          className="btn btn-ghost"
+          style={{ fontSize: 13 }}
+          disabled={recargando || loading}
+          onClick={handleRecargar}
+          title="Recargar ventas"
+        >
+          <Icon name="refresh" size={15} style={recargando ? { animation: 'navspin .6s linear infinite' } : undefined} />
+          {recargando ? 'Actualizando…' : 'Actualizar'}
+        </button>
         <button
           className="btn btn-soft"
           style={{ fontSize: 13 }}

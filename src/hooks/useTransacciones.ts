@@ -142,6 +142,19 @@ export function useTransacciones() {
   const [loading, setLoading] = useState(true)
   const [negocioId, setNegocioId] = useState<string | null>(null)
 
+  // Exposed so the page can trigger a reload (e.g. refresh button, visibilitychange)
+  const recargar = useCallback(async (nid: string) => {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('ventas')
+      .select('*, venta_items(id, producto_id, nombre, categoria, qty, precio, costo, unidades_base), venta_pagos(id, monto, metodo, created_at)')
+      .eq('negocio_id', nid)
+      .eq('anulada', false)
+      .order('created_at', { ascending: false })
+    setVentas(((data ?? []) as Record<string, unknown>[]).map(mapRow))
+    setLoading(false)
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     const init = async () => {
@@ -152,20 +165,11 @@ export function useTransacciones() {
       if (!perfil || cancelled) return
       const nid = (perfil as { negocio_id: string }).negocio_id
       setNegocioId(nid)
-      const { data } = await supabase
-        .from('ventas')
-        .select('*, venta_items(id, producto_id, nombre, categoria, qty, precio, costo, unidades_base), venta_pagos(id, monto, metodo, created_at)')
-        .eq('negocio_id', nid)
-        .eq('anulada', false)
-        .order('created_at', { ascending: false })
-      if (!cancelled) {
-        setVentas(((data ?? []) as Record<string, unknown>[]).map(mapRow))
-        setLoading(false)
-      }
+      if (!cancelled) await recargar(nid)
     }
     init()
     return () => { cancelled = true }
-  }, [])
+  }, [recargar])
 
   const anular = useCallback(async (ventaId: string) => {
     if (!negocioId) return
@@ -368,5 +372,10 @@ export function useTransacciones() {
     setVentas(((data ?? []) as Record<string, unknown>[]).map(mapRow))
   }, [negocioId])
 
-  return { ventas, loading, anular, actualizar, saldar, importarMasivoVentas }
+  const recargarPublico = useCallback(async () => {
+    if (!negocioId) return
+    await recargar(negocioId)
+  }, [negocioId, recargar])
+
+  return { ventas, loading, anular, actualizar, saldar, importarMasivoVentas, recargar: recargarPublico }
 }
