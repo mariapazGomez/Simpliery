@@ -33,6 +33,25 @@ function norm(s: string): string {
  * Parsea un archivo .xlsx o .csv y devuelve filas como objetos.
  * Las claves son los encabezados de la primera fila (normalizados).
  */
+/** Convierte un valor de celda SheetJS a string limpio. */
+function cellToStr(val: unknown): string {
+  if (val === null || val === undefined) return ''
+  if (val instanceof Date) {
+    // cellDates: true → SheetJS entrega Date para celdas fecha y hora.
+    // Tiempo puro (base 30-dic-1899): año ≤ 1900 → formateamos HH:MM en 24h.
+    // Fecha real: año > 1900 → DD-MM-YYYY.
+    if (val.getUTCFullYear() <= 1900) {
+      const h = String(val.getUTCHours()).padStart(2, '0')
+      const m = String(val.getUTCMinutes()).padStart(2, '0')
+      return `${h}:${m}`
+    }
+    const dd = String(val.getUTCDate()).padStart(2, '0')
+    const mm = String(val.getUTCMonth() + 1).padStart(2, '0')
+    return `${dd}-${mm}-${val.getUTCFullYear()}`
+  }
+  return String(val).trim()
+}
+
 export function parseExcel(file: File): Promise<Record<string, string>[]> {
   const isCsv = file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv'
 
@@ -42,21 +61,22 @@ export function parseExcel(file: File): Promise<Record<string, string>[]> {
     reader.onload = (e) => {
       try {
         const data = e.target?.result
+        // cellDates: true → las celdas detectadas como fecha/hora llegan como
+        // objetos Date en vez de seriales numéricos (ej. 46209.999...).
         const wb = isCsv
-          ? XLSX.read(data as string, { type: 'string' })
-          : XLSX.read(data, { type: 'array', codepage: 65001 })
+          ? XLSX.read(data as string, { type: 'string', cellDates: true })
+          : XLSX.read(data, { type: 'array', codepage: 65001, cellDates: true })
         const ws = wb.Sheets[wb.SheetNames[0]]
-        const raw = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' }) as string[][]
+        const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' }) as unknown[][]
 
         if (raw.length < 2) { resolve([]); return }
 
-        const headers = raw[0].map((h) => norm(String(h)))
+        const headers = (raw[0] as unknown[]).map((h) => norm(cellToStr(h)))
 
-        const rows: Record<string, string>[] = raw
-          .slice(1)
+        const rows: Record<string, string>[] = (raw.slice(1) as unknown[][])
           .map((row) => {
             const obj: Record<string, string> = {}
-            headers.forEach((h, i) => { obj[h] = String(row[i] ?? '').trim() })
+            headers.forEach((h, i) => { obj[h] = cellToStr(row[i]) })
             return obj
           })
           .filter((r) => Object.values(r).some((v) => v !== ''))
