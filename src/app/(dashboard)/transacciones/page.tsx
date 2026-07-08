@@ -1,14 +1,15 @@
 'use client'
 
 // ---------- Transacciones: historial de ventas con detalle completo ----------
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTransacciones, type VentaRow, type VentaUpdatePatch, type EditItem, type ClienteSnap } from '@/hooks/useTransacciones'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
 import { useProductos, type Producto } from '@/hooks/useProductos'
 import { useGo } from '@/lib/nav'
 import { fmtCLP } from '@/lib/format'
-import { exportVentasExcel } from '@/lib/excel'
+import { exportVentasExcel, parseExcel, downloadTemplate } from '@/lib/excel'
+import { type BolataImport } from '@/hooks/useTransacciones'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, SearchBox, CatDot, Field } from '@/components/ui'
 
@@ -29,13 +30,14 @@ function fechaHora(d: Date) {
 }
 
 export default function TransaccionesPage() {
-  const { ventas, anular, actualizar } = useTransacciones()
+  const { ventas, anular, actualizar, importarMasivoVentas } = useTransacciones()
   const { config } = useConfiguracion()
   const { productos } = useProductos()
   const [filtro, setFiltro] = useState<Filtro>('todas')
   const [q, setQ] = useState('')
   const [detalle, setDetalle] = useState<VentaRow | null>(null)
   const [editar, setEditar] = useState<VentaRow | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   const filtradas = useMemo(() => {
     const term = q.trim().toLowerCase()
@@ -70,6 +72,14 @@ export default function TransaccionesPage() {
           <Icon name="receipt" size={13} />
           {m.count} transaccion{m.count === 1 ? '' : 'es'}
         </div>
+        <button
+          className="btn btn-soft"
+          style={{ fontSize: 13 }}
+          onClick={() => setShowImport(true)}
+        >
+          <Icon name="arrowUp" size={15} />
+          Importar
+        </button>
         <button
           className="btn btn-soft"
           style={{ fontSize: 13 }}
@@ -162,6 +172,13 @@ export default function TransaccionesPage() {
         )}
       </div>
 
+      {showImport && (
+        <ImportVentasModal
+          onClose={() => setShowImport(false)}
+          importarMasivoVentas={importarMasivoVentas}
+        />
+      )}
+
       {detalle && (
         <DetalleModal
           venta={detalle}
@@ -182,6 +199,343 @@ export default function TransaccionesPage() {
 
       <style>{'@media(max-width:640px){.tx-head{display:none!important}.tx-row{grid-template-columns:1fr auto!important}.tx-row>:nth-child(3){display:none}.tx-row>:nth-child(5){display:none}}'}</style>
     </div>
+  )
+}
+
+/* ---------- Import masivo de ventas ---------- */
+
+const IV_HEADERS = [
+  'Boleta *', 'Fecha *', 'Hora', 'Categoría', 'Producto *',
+  'Cantidad *', 'Precio Unitario *', 'Costo Item',
+  'Método Pago', 'Tipo Venta', 'Cliente', 'Ciudad',
+  'Teléfono', 'Correo', 'Descuento Boleta', 'Total Boleta',
+]
+const IV_EXAMPLE: Record<string, string> = {
+  'Boleta': '46736', 'Fecha': '07-07-2026', 'Hora': '06:53',
+  'Categoría': 'Huevos', 'Producto': 'Extra — 30 un.', 'Cantidad': '2',
+  'Precio Unitario': '8550', 'Costo Item': '6150', 'Método Pago': 'Efectivo',
+  'Tipo Venta': 'local', 'Cliente': '', 'Ciudad': '', 'Teléfono': '',
+  'Correo': '', 'Descuento Boleta': '0', 'Total Boleta': '17100',
+}
+
+interface VIRow {
+  idx: number
+  boleta: number | null
+  fechaISO: string | null
+  fechaDisplay: string
+  categoria: string
+  nombre: string
+  qty: number | null
+  precio: number | null
+  costoTotal: number | null
+  metodoPago: string
+  tipo: 'local' | 'despacho'
+  clienteNombre: string
+  ciudad: string
+  telefono: string
+  correo: string
+  descuento: number
+  errors: string[]
+}
+
+function parseHoraStr(hora: string): { h: number; m: number } | null {
+  const s = hora.trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ')
+  const pm = /p\s*m/.test(s)
+  const am = /a\s*m/.test(s)
+  const m = s.match(/(\d{1,2}):(\d{2})/)
+  if (!m) return null
+  let h = parseInt(m[1], 10)
+  const min = parseInt(m[2], 10)
+  if (pm && h < 12) h += 12
+  if (am && h === 12) h = 0
+  return (h <= 23 && min <= 59) ? { h, m: min } : null
+}
+
+function parseFechaISO(fecha: string, hora: string): string | null {
+  const fm = fecha.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (!fm) return null
+  const [, dd, mm, yyyy] = fm
+  const t = parseHoraStr(hora) ?? { h: 12, m: 0 }
+  return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T${String(t.h).padStart(2, '0')}:${String(t.m).padStart(2, '0')}:00`
+}
+
+function parseNumIV(s: string): number | null {
+  const v = Number(s.trim().replace(',', '.'))
+  return isNaN(v) ? null : v
+}
+
+function validateVentasRows(raw: Record<string, string>[]): VIRow[] {
+  return raw.map((r, idx) => {
+    const errors: string[] = []
+
+    const boletaRaw = (r['boleta *'] ?? r['boleta'] ?? '').trim()
+    const boletaNum = boletaRaw ? parseInt(boletaRaw, 10) : null
+    if (!boletaRaw) errors.push('Boleta requerida')
+    else if (!boletaNum || boletaNum <= 0 || !Number.isInteger(boletaNum)) errors.push('Boleta debe ser número entero positivo')
+
+    const fechaRaw = (r['fecha *'] ?? r['fecha'] ?? '').trim()
+    const horaRaw = (r['hora'] ?? '').trim()
+    const fechaISO = fechaRaw ? parseFechaISO(fechaRaw, horaRaw) : null
+    if (!fechaRaw) errors.push('Fecha requerida')
+    else if (!fechaISO) errors.push('Fecha inválida (DD-MM-YYYY)')
+
+    const nombre = (r['producto *'] ?? r['producto'] ?? '').trim()
+    if (!nombre) errors.push('Producto requerido')
+
+    const qtyRaw = (r['cantidad *'] ?? r['cantidad'] ?? '').trim()
+    const qty = qtyRaw ? parseNumIV(qtyRaw) : null
+    if (!qtyRaw) errors.push('Cantidad requerida')
+    else if (qty === null || qty <= 0) errors.push('Cantidad debe ser > 0')
+
+    const precioRaw = (r['precio unitario *'] ?? r['precio unitario'] ?? '').trim()
+    const precio = precioRaw ? parseNumIV(precioRaw) : null
+    if (!precioRaw) errors.push('Precio Unitario requerido')
+    else if (precio === null || precio < 0) errors.push('Precio Unitario inválido')
+
+    const costoRaw = (r['costo item'] ?? '').trim()
+    const costoTotal = costoRaw ? parseNumIV(costoRaw) : null
+
+    const descuentoRaw = (r['descuento boleta'] ?? '0').trim()
+    const descuento = parseNumIV(descuentoRaw) ?? 0
+
+    const tipoRaw = (r['tipo venta'] ?? '').trim().toLowerCase()
+
+    return {
+      idx,
+      boleta: boletaNum && boletaNum > 0 ? boletaNum : null,
+      fechaISO,
+      fechaDisplay: fechaRaw,
+      categoria: (r['categoria'] ?? '').trim(),
+      nombre,
+      qty,
+      precio,
+      costoTotal,
+      metodoPago: (r['metodo pago'] ?? 'Efectivo').trim() || 'Efectivo',
+      tipo: tipoRaw === 'despacho' ? 'despacho' : 'local',
+      clienteNombre: (r['cliente'] ?? '').trim(),
+      ciudad: (r['ciudad'] ?? '').trim(),
+      telefono: (r['telefono'] ?? '').trim(),
+      correo: (r['correo'] ?? '').trim(),
+      descuento,
+      errors,
+    }
+  })
+}
+
+function buildBoletas(rows: VIRow[]): BolataImport[] {
+  const map = new Map<number, VIRow[]>()
+  for (const r of rows) {
+    if (r.boleta === null) continue
+    const existing = map.get(r.boleta) ?? []
+    existing.push(r)
+    map.set(r.boleta, existing)
+  }
+  const result: BolataImport[] = []
+  for (const [boleta, bRows] of map) {
+    const first = bRows[0]
+    const items = bRows
+      .filter(r => r.nombre && r.qty !== null && r.precio !== null)
+      .map(r => ({
+        nombre: r.nombre,
+        categoria: r.categoria,
+        qty: r.qty!,
+        precio: r.precio!,
+        costo_unitario: r.costoTotal !== null && r.qty! > 0 ? r.costoTotal / r.qty! : 0,
+      }))
+    const subtotal = items.reduce((a, i) => a + i.precio * i.qty, 0)
+    const descuento = first.descuento
+    const total = Math.max(0, subtotal - descuento)
+    const costo = items.reduce((a, i) => a + i.costo_unitario * i.qty, 0)
+    result.push({
+      boleta,
+      created_at: first.fechaISO ?? new Date().toISOString(),
+      tipo: first.tipo,
+      metodo_pago: first.metodoPago,
+      total,
+      costo,
+      ganancia: total - costo,
+      descuento,
+      cliente: first.clienteNombre
+        ? { nombre: first.clienteNombre, ciudad: first.ciudad || undefined, telefono: first.telefono || undefined, correo: first.correo || undefined }
+        : null,
+      items,
+    })
+  }
+  return result
+}
+
+function ImportVentasModal({ onClose, importarMasivoVentas }: {
+  onClose: () => void
+  importarMasivoVentas: (boletas: BolataImport[]) => Promise<void>
+}) {
+  const [rows, setRows] = useState<VIRow[]>([])
+  const [step, setStep] = useState<'template' | 'preview'>('template')
+  const [dragging, setDragging] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const hasErrors = rows.some(r => r.errors.length > 0)
+  const boletas = !hasErrors ? buildBoletas(rows.filter(r => r.errors.length === 0)) : []
+  const nBoletas = new Set(rows.filter(r => r.boleta !== null).map(r => r.boleta)).size
+
+  async function handleFile(file: File) {
+    setErrorMsg(null)
+    try {
+      const raw = await parseExcel(file)
+      if (raw.length === 0) { setErrorMsg('El archivo está vacío o sin datos.'); return }
+      const validated = validateVentasRows(raw)
+      setRows(validated)
+      setStep('preview')
+    } catch {
+      setErrorMsg('No se pudo leer el archivo. Usa el formato .xlsx de la plantilla.')
+    }
+  }
+
+  async function handleImport() {
+    if (hasErrors || boletas.length === 0) return
+    setImporting(true)
+    setErrorMsg(null)
+    try {
+      await importarMasivoVentas(boletas)
+      onClose()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : 'Error al importar')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const dropProps = {
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setDragging(true) },
+    onDragLeave: () => setDragging(false),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault(); setDragging(false)
+      const f = e.dataTransfer.files[0]
+      if (f) handleFile(f)
+    },
+  }
+
+  return (
+    <Modal
+      title="Importar ventas"
+      sub="Carga masiva de ventas históricas. No modifica el stock existente."
+      onClose={onClose}
+      width={700}
+      footer={
+        step === 'preview' ? (
+          <>
+            <button className="btn btn-ghost" onClick={() => setStep('template')}>Volver</button>
+            <button
+              className="btn btn-primary"
+              disabled={hasErrors || boletas.length === 0 || importing}
+              onClick={handleImport}
+            >
+              <Icon name="check" size={16} />
+              {importing ? 'Importando…' : `Importar ${nBoletas} boleta${nBoletas !== 1 ? 's' : ''}`}
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        )
+      }
+    >
+      {step === 'template' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ background: 'var(--surface-3)', borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Paso 1 — Descarga la plantilla</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-2)', fontWeight: 600, lineHeight: 1.6 }}>
+              Una fila por línea de producto. Agrupa items de la misma boleta repitiendo el mismo número en la columna <strong>Boleta</strong>.
+              Los campos marcados con <strong>*</strong> son obligatorios. <strong>Costo Item</strong> es el costo total del ítem (precio costo × cantidad).
+            </div>
+            <button
+              className="btn btn-soft"
+              style={{ alignSelf: 'flex-start', fontSize: 13.5 }}
+              onClick={() => downloadTemplate('plantilla_ventas.xlsx', IV_HEADERS, IV_EXAMPLE)}
+            >
+              <Icon name="download" size={15} />Descargar plantilla Excel
+            </button>
+          </div>
+
+          <div style={{ background: 'var(--surface-3)', borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Paso 2 — Sube el archivo</div>
+            <div
+              {...dropProps}
+              onClick={() => fileRef.current?.click()}
+              style={{
+                border: `2px dashed ${dragging ? 'var(--primary)' : 'var(--line)'}`,
+                borderRadius: 10, padding: '28px 20px', textAlign: 'center',
+                cursor: 'pointer', transition: 'border-color .15s',
+                background: dragging ? 'var(--primary-tint)' : 'transparent',
+              }}
+            >
+              <Icon name="arrowUp" size={28} style={{ color: 'var(--ink-3)', marginBottom: 8 }} />
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Arrastra aquí el archivo</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 4 }}>o haz clic para seleccionar (.xlsx)</div>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+            </div>
+          </div>
+
+          {errorMsg && (
+            <div style={{ padding: '10px 14px', background: 'var(--danger-tint, oklch(0.97 0.02 10))', borderRadius: 10, fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>
+              <Icon name="alert" size={14} /> {errorMsg}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>{rows.length} filas · {nBoletas} boleta{nBoletas !== 1 ? 's' : ''}</span>
+            {hasErrors
+              ? <span className="chip chip-danger" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> Hay errores — corrígelos antes de importar</span>
+              : <span className="chip chip-ok" style={{ fontSize: 12 }}><Icon name="check" size={12} /> Sin errores</span>
+            }
+          </div>
+
+          <div style={{ maxHeight: 380, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 10, fontSize: 12.5 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface-3)', fontSize: 11, fontWeight: 800, color: 'var(--ink-3)', textTransform: 'uppercase' }}>
+                  {['Boleta', 'Fecha', 'Producto', 'Cant.', 'Precio', 'Método', 'Errores'].map(h => (
+                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr
+                    key={r.idx}
+                    style={{ borderTop: '1px solid var(--line)', background: r.errors.length > 0 ? 'oklch(0.97 0.02 10)' : 'var(--surface)' }}
+                  >
+                    <td style={{ padding: '7px 10px', fontWeight: 800 }}>{r.boleta ?? '—'}</td>
+                    <td style={{ padding: '7px 10px', color: 'var(--ink-2)' }}>{r.fechaDisplay || '—'}</td>
+                    <td style={{ padding: '7px 10px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.nombre || '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{r.qty ?? '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{r.precio != null ? fmtCLP(r.precio) : '—'}</td>
+                    <td style={{ padding: '7px 10px', color: 'var(--ink-2)' }}>{r.metodoPago}</td>
+                    <td style={{ padding: '7px 10px', color: 'var(--danger)', fontWeight: 700 }}>
+                      {r.errors.length > 0 ? r.errors.join(' · ') : <span style={{ color: 'var(--ok)' }}><Icon name="check" size={13} /></span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {errorMsg && (
+            <div style={{ padding: '10px 14px', background: 'oklch(0.97 0.02 10)', borderRadius: 10, fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>
+              <Icon name="alert" size={14} /> {errorMsg}
+            </div>
+          )}
+
+          {!hasErrors && (
+            <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, lineHeight: 1.6 }}>
+              <Icon name="alert" size={13} /> Esta importación <strong>no modifica el stock</strong> de los productos. Es solo para registrar ventas históricas.
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   )
 }
 
