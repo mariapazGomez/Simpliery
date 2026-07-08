@@ -29,6 +29,20 @@ function fechaHora(d: Date) {
   }
 }
 
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function dateStrToStart(s: string): string {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d).toISOString()
+}
+
+function dateStrToEnd(s: string): string {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d + 1).toISOString()
+}
+
 export default function TransaccionesPage() {
   const { ventas, loading, anular, actualizar, importarMasivoVentas, recargar } = useTransacciones()
   const { config } = useConfiguracion()
@@ -41,17 +55,43 @@ export default function TransaccionesPage() {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
   const [recargando, setRecargando] = useState(false)
 
+  const hoy = toLocalDateStr(new Date())
+  const ayer = toLocalDateStr(new Date(Date.now() - 86_400_000))
+  const [desdeStr, setDesdeStr] = useState(ayer)
+  const [hastaStr, setHastaStr] = useState(hoy)
+
+  // Ref para que visibilitychange siempre use las fechas actuales
+  const rangoRef = useRef({ desdeStr, hastaStr })
+  useEffect(() => { rangoRef.current = { desdeStr, hastaStr } }, [desdeStr, hastaStr])
+
   // Auto-refresca cuando el usuario vuelve a esta pestaña
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') recargar() }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        const { desdeStr: d, hastaStr: h } = rangoRef.current
+        recargar(dateStrToStart(d), dateStrToEnd(h))
+      }
+    }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [recargar])
 
-  const handleRecargar = async () => {
+  const cargarRango = async (desde: string, hasta: string) => {
     setRecargando(true)
-    await recargar()
+    await recargar(dateStrToStart(desde), dateStrToEnd(hasta))
     setRecargando(false)
+  }
+
+  const handleRecargar = () => cargarRango(desdeStr, hastaStr)
+
+  const handleDesde = (v: string) => {
+    setDesdeStr(v)
+    if (v && hastaStr) cargarRango(v, hastaStr)
+  }
+
+  const handleHasta = (v: string) => {
+    setHastaStr(v)
+    if (desdeStr && v) cargarRango(desdeStr, v)
   }
 
   const filtradas = useMemo(() => {
@@ -141,6 +181,27 @@ export default function TransaccionesPage() {
             </button>
           ))}
         </div>
+
+        {/* Selector de rango de fechas */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="clock" size={14} style={{ color: 'var(--ink-3)', flexShrink: 0 }} />
+          <input
+            type="date"
+            value={desdeStr}
+            max={hastaStr}
+            onChange={e => handleDesde(e.target.value)}
+            style={{ border: '1px solid var(--line)', borderRadius: 9, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600 }}>—</span>
+          <input
+            type="date"
+            value={hastaStr}
+            min={desdeStr}
+            onChange={e => handleHasta(e.target.value)}
+            style={{ border: '1px solid var(--line)', borderRadius: 9, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', background: 'var(--surface)', color: 'var(--ink)', outline: 'none', cursor: 'pointer' }}
+          />
+        </div>
+
         <div style={{ marginLeft: 'auto' }}>
           <SearchBox value={q} onChange={setQ} placeholder="Buscar boleta, cliente o producto…" width={260} />
         </div>

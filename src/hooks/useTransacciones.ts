@@ -142,14 +142,25 @@ export function useTransacciones() {
   const [loading, setLoading] = useState(true)
   const [negocioId, setNegocioId] = useState<string | null>(null)
 
-  // Exposed so the page can trigger a reload (e.g. refresh button, visibilitychange)
-  const recargar = useCallback(async (nid: string) => {
+  // Devuelve el rango ISO de los últimos 2 días (ayer 00:00 → mañana 00:00, hora local)
+  function defaultRange() {
+    const now = new Date()
+    const desde = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString()
+    const hasta  = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
+    return { desde, hasta }
+  }
+
+  // desde/hasta son ISO timestamps (tz local). Sin ellos usa los últimos 2 días.
+  const recargar = useCallback(async (nid: string, desde?: string, hasta?: string) => {
     const supabase = createClient()
+    const range = desde && hasta ? { desde, hasta } : defaultRange()
     const { data } = await supabase
       .from('ventas')
       .select('*, venta_items(id, producto_id, nombre, categoria, qty, precio, costo, unidades_base), venta_pagos(id, monto, metodo, created_at)')
       .eq('negocio_id', nid)
       .eq('anulada', false)
+      .gte('created_at', range.desde)
+      .lt('created_at', range.hasta)
       .order('created_at', { ascending: false })
     setVentas(((data ?? []) as Record<string, unknown>[]).map(mapRow))
     setLoading(false)
@@ -362,19 +373,12 @@ export function useTransacciones() {
       if (ie) throw new Error(`Error al insertar items: ${ie.message}`)
     }
 
-    // Reload ventas list
-    const { data } = await supabase
-      .from('ventas')
-      .select('*, venta_items(id, producto_id, nombre, categoria, qty, precio, costo, unidades_base), venta_pagos(id, monto, metodo, created_at)')
-      .eq('negocio_id', negocioId)
-      .eq('anulada', false)
-      .order('created_at', { ascending: false })
-    setVentas(((data ?? []) as Record<string, unknown>[]).map(mapRow))
-  }, [negocioId])
-
-  const recargarPublico = useCallback(async () => {
-    if (!negocioId) return
     await recargar(negocioId)
+  }, [negocioId, recargar])
+
+  const recargarPublico = useCallback(async (desde?: string, hasta?: string) => {
+    if (!negocioId) return
+    await recargar(negocioId, desde, hasta)
   }, [negocioId, recargar])
 
   return { ventas, loading, anular, actualizar, saldar, importarMasivoVentas, recargar: recargarPublico }
