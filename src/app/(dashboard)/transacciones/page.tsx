@@ -38,10 +38,11 @@ export default function TransaccionesPage() {
   const [detalle, setDetalle] = useState<VentaRow | null>(null)
   const [editar, setEditar] = useState<VentaRow | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
   const filtradas = useMemo(() => {
     const term = q.trim().toLowerCase()
-    return ventas.filter((s) => {
+    const lista = ventas.filter((s) => {
       if (filtro === 'local' && s.tipo !== 'local') return false
       if (filtro === 'despacho' && s.tipo !== 'despacho') return false
       if (filtro === 'credito' && !s.credito) return false
@@ -51,7 +52,10 @@ export default function TransaccionesPage() {
       const enProducto = s.items.some((it) => it.nombre.toLowerCase().includes(term))
       return enCliente || enBoleta || enProducto
     })
-  }, [ventas, filtro, q])
+    return sortOrder === 'desc'
+      ? [...lista].sort((a, b) => b.created_at.localeCompare(a.created_at))
+      : [...lista].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  }, [ventas, filtro, q, sortOrder])
 
   const m = useMemo(() => {
     const monto = filtradas.reduce((a, s) => a + s.total, 0)
@@ -128,7 +132,13 @@ export default function TransaccionesPage() {
             <div className="tx-head" style={{ display: 'grid', gridTemplateColumns: '110px 1fr 110px 130px 40px', gap: 12, padding: '12px 18px', borderBottom: '1px solid var(--line)', fontSize: 11.5, fontWeight: 800, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
               <div>Boleta</div>
               <div>Cliente / Detalle</div>
-              <div>Fecha</div>
+              <button
+                onClick={() => setSortOrder(o => o === 'desc' ? 'asc' : 'desc')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: 'inherit', fontWeight: 'inherit', color: 'var(--primary)', textTransform: 'inherit', letterSpacing: 'inherit' }}
+              >
+                Fecha
+                <Icon name={sortOrder === 'desc' ? 'chevD' : 'arrowUp'} size={13} />
+              </button>
               <div style={{ textAlign: 'right' }}>Total</div>
               <div />
             </div>
