@@ -45,22 +45,36 @@ function CategoriaBar({
 
   const countFor = (nombre: string) => productos.filter(p => p.categoria === nombre).length
 
+  const errMsg = (e: unknown) => (e instanceof Error ? e.message : (e as { message?: string })?.message ?? 'Error desconocido')
+
   const handleAdd = async () => {
     if (!newCat.trim()) return
-    await agregar(newCat.trim())
-    setNewCat('')
-    setShowNueva(false)
+    try {
+      await agregar(newCat.trim())
+      setNewCat('')
+      setShowNueva(false)
+    } catch (e) {
+      window.alert('No se pudo crear la categoría: ' + errMsg(e))
+    }
   }
 
   const handleRename = async (id: string) => {
     if (!renameVal.trim()) return
-    await renombrar(id, renameVal.trim())
-    setRenamingId(null)
+    try {
+      await renombrar(id, renameVal.trim())
+      setRenamingId(null)
+    } catch (e) {
+      window.alert('No se pudo renombrar: ' + errMsg(e))
+    }
   }
 
   const handleDelete = async (c: Categoria) => {
     if (!window.confirm(`¿Borrar "${c.nombre}"? Los productos perderán su categoría.`)) return
-    await eliminar(c.id)
+    try {
+      await eliminar(c.id)
+    } catch (e) {
+      window.alert('No se pudo eliminar: ' + errMsg(e))
+    }
   }
 
   return (
