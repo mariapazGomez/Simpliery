@@ -123,6 +123,25 @@ export default function TransaccionesPage() {
     }
   }, [filtradas])
 
+  // Métricas solo del día actual (sin importar el rango seleccionado)
+  const mHoy = useMemo(() => {
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+    const end   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
+    const hoy = ventas.filter(v => v.created_at >= start && v.created_at < end)
+    const monto = hoy.reduce((a, s) => a + s.total, 0)
+    const credito = hoy.filter(s => s.credito && !s.pagado)
+    return {
+      count: hoy.length,
+      monto,
+      ticket: hoy.length ? monto / hoy.length : 0,
+      pendiente: credito.reduce((a, s) => a + s.monto_pendiente, 0),
+      pendienteN: credito.length,
+    }
+  }, [ventas])
+
+  const fechaHoyLabel = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+
   return (
     <div className="fade-in">
       <PageHeader title="Transacciones" sub="Historial de ventas. Haz clic en una para ver el detalle completo.">
@@ -159,12 +178,18 @@ export default function TransaccionesPage() {
         </button>
       </PageHeader>
 
-      {/* Métricas */}
+      {/* Métricas — solo hoy */}
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+          Resumen de hoy
+        </span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-3)' }}>({fechaHoyLabel})</span>
+      </div>
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 14, marginBottom: 18 }}>
-        <Metric icon="receipt" label="Transacciones" value={m.count} tone="primary" />
-        <Metric icon="cash" label="Monto total" value={fmtCLP(m.monto)} tone="info" />
-        <Metric icon="reportes" label="Ticket promedio" value={fmtCLP(Math.round(m.ticket))} tone="terra" />
-        <Metric icon="alert" label="Por cobrar (fiado)" value={fmtCLP(m.pendiente)} sub={m.pendienteN > 0 ? `${m.pendienteN} a crédito` : 'Todo cobrado'} tone={m.pendiente > 0 ? 'warn' : 'primary'} />
+        <Metric icon="receipt" label="Transacciones" value={mHoy.count} tone="primary" />
+        <Metric icon="cash" label="Monto total" value={fmtCLP(mHoy.monto)} tone="info" />
+        <Metric icon="reportes" label="Ticket promedio" value={fmtCLP(Math.round(mHoy.ticket))} tone="terra" />
+        <Metric icon="alert" label="Por cobrar (fiado)" value={fmtCLP(mHoy.pendiente)} sub={mHoy.pendienteN > 0 ? `${mHoy.pendienteN} a crédito` : 'Todo cobrado'} tone={mHoy.pendiente > 0 ? 'warn' : 'primary'} />
       </div>
 
       {/* Filtros */}
