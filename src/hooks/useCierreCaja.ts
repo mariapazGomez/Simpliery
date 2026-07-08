@@ -72,14 +72,14 @@ export function useCierreCaja() {
         .select('id, total, ganancia, credito, metodo_pago, pago_mixto_metodo, pago_mixto_monto, venta_items(qty)')
         .eq('negocio_id', nid)
         .eq('anulada', false)
-        .gte('fecha', start)
-        .lt('fecha', end),
+        .gte('created_at', start)
+        .lt('created_at', end),
       supabase
         .from('venta_pagos')
         .select('monto, metodo, ventas!inner(credito)')
         .eq('negocio_id', nid)
-        .gte('fecha', start)
-        .lt('fecha', end),
+        .gte('created_at', start)
+        .lt('created_at', end),
       supabase
         .from('productos')
         .select('stock, stock_minimo')
