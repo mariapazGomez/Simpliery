@@ -12,10 +12,22 @@ export interface Categoria {
 export function useCategorias() {
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(true)
+  const [negocioId, setNegocioId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const supabase = createClient()
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user || cancelled) return
+      supabase.from('perfiles').select('negocio_id').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (cancelled) return
+          const nid = (data as { negocio_id: string } | null)?.negocio_id
+          if (nid) setNegocioId(nid)
+        })
+    })
+
     supabase
       .from('categorias')
       .select('id, nombre, orden')
@@ -29,16 +41,17 @@ export function useCategorias() {
   }, [])
 
   const agregar = useCallback(async (nombre: string) => {
+    if (!negocioId) throw new Error('Negocio no disponible')
     const supabase = createClient()
     const maxOrden = categorias.length > 0 ? Math.max(...categorias.map(c => c.orden)) : 0
     const { data, error } = await supabase
       .from('categorias')
-      .insert({ nombre: nombre.trim(), orden: maxOrden + 1 })
+      .insert({ nombre: nombre.trim(), orden: maxOrden + 1, negocio_id: negocioId })
       .select('id, nombre, orden')
       .single()
     if (error) throw error
     setCategorias(cs => [...cs, data as Categoria])
-  }, [categorias])
+  }, [categorias, negocioId])
 
   const renombrar = useCallback(async (id: string, nombre: string) => {
     const supabase = createClient()
