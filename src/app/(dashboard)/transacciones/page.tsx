@@ -8,6 +8,7 @@ import { useConfiguracion } from '@/hooks/useConfiguracion'
 import { useProductos, type Producto } from '@/hooks/useProductos'
 import { useGo } from '@/lib/nav'
 import { fmtCLP } from '@/lib/format'
+import { exportVentasExcel } from '@/lib/excel'
 import { Icon } from '@/components/icon'
 import { PageHeader, Metric, Modal, EmptyState, SearchBox, CatDot, Field } from '@/components/ui'
 
@@ -69,6 +70,15 @@ export default function TransaccionesPage() {
           <Icon name="receipt" size={13} />
           {m.count} transaccion{m.count === 1 ? '' : 'es'}
         </div>
+        <button
+          className="btn btn-soft"
+          style={{ fontSize: 13 }}
+          disabled={filtradas.length === 0}
+          onClick={() => exportVentasExcel(filtradas, `ventas_${new Date().toISOString().slice(0, 10)}.xlsx`)}
+        >
+          <Icon name="download" size={15} />
+          Exportar
+        </button>
       </PageHeader>
 
       {/* Métricas */}

@@ -2,6 +2,28 @@
 
 import * as XLSX from 'xlsx'
 
+/* ── Tipos mínimos para exportar ventas (sin importar del hook) ── */
+interface ItemExport {
+  nombre: string
+  categoria: string
+  qty: number
+  precio: number
+  costo: number
+}
+interface VentaExport {
+  boleta: number
+  created_at: string
+  tipo: string
+  metodo_pago: string
+  total: number
+  descuento_monto: number | null
+  cliente_snapshot: {
+    nombre?: string; ciudad?: string
+    telefono?: string; numero?: string; correo?: string
+  } | null
+  items: ItemExport[]
+}
+
 /** Normaliza clave de columna: sin espacios, minúsculas, sin tildes. */
 function norm(s: string): string {
   return s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -64,5 +86,86 @@ export function downloadTemplate(
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Datos')
+  XLSX.writeFile(wb, filename)
+}
+
+/* ─────────── Exportar ventas ─────────── */
+
+function fmtFechaExport(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}-${mm}-${d.getFullYear()}`
+}
+
+function fmtHoraExport(d: Date): string {
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const ampm = h < 12 ? 'a. m.' : 'p. m.'
+  const h12 = h % 12 || 12
+  return `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
+export function exportVentasExcel(ventas: VentaExport[], filename = 'ventas.xlsx'): void {
+  const rows: Record<string, unknown>[] = []
+
+  for (const v of ventas) {
+    const d = new Date(v.created_at)
+    const fecha = fmtFechaExport(d)
+    const hora = fmtHoraExport(d)
+    const cliente = v.cliente_snapshot
+    const descuento = v.descuento_monto ?? 0
+
+    const itemsToRender = v.items.length > 0 ? v.items : [null]
+
+    for (const item of itemsToRender) {
+      const totalItem = item ? item.precio * item.qty : 0
+      const costoItem = item ? item.costo * item.qty : 0
+      rows.push({
+        'Boleta': v.boleta,
+        'Fecha': fecha,
+        'Hora': hora,
+        'Categoría': item?.categoria ?? '',
+        'Producto': item?.nombre ?? '',
+        'Cantidad': item?.qty ?? 0,
+        'Precio Unitario': item?.precio ?? 0,
+        'Total Item': totalItem,
+        'Costo Item': costoItem,
+        'Ganancia Item': totalItem - costoItem,
+        'Método Pago': v.metodo_pago,
+        'Tipo Venta': v.tipo,
+        'Cliente': cliente?.nombre ?? '',
+        'Ciudad': cliente?.ciudad ?? '',
+        'Teléfono': cliente?.telefono ?? cliente?.numero ?? '',
+        'Correo': cliente?.correo ?? '',
+        'Descuento Boleta': descuento,
+        'Total Boleta': v.total,
+      })
+    }
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  ws['!cols'] = [
+    { wch: 9 },  // Boleta
+    { wch: 12 }, // Fecha
+    { wch: 12 }, // Hora
+    { wch: 14 }, // Categoría
+    { wch: 28 }, // Producto
+    { wch: 10 }, // Cantidad
+    { wch: 15 }, // Precio Unitario
+    { wch: 12 }, // Total Item
+    { wch: 12 }, // Costo Item
+    { wch: 14 }, // Ganancia Item
+    { wch: 14 }, // Método Pago
+    { wch: 11 }, // Tipo Venta
+    { wch: 22 }, // Cliente
+    { wch: 14 }, // Ciudad
+    { wch: 14 }, // Teléfono
+    { wch: 24 }, // Correo
+    { wch: 16 }, // Descuento Boleta
+    { wch: 13 }, // Total Boleta
+  ]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Ventas')
   XLSX.writeFile(wb, filename)
 }
