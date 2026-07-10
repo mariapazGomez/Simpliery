@@ -6,14 +6,19 @@ import { createClient } from '@/lib/supabase/client'
 /* ---------- Tipos de dominio ---------- */
 
 export interface CartItem {
+  /** Clave única en el carrito: productId o productId__varianteId */
+  cartKey: string
   productId: string
+  varianteId: string | null
   nombre: string
   categoria: string
   precio: number
   costo: number
   qty: number
-  /** Unidades de la unidad base descontadas del stock (= qty para productos simples). */
+  /** qty × unidadesBaseFactor — lo que se descuenta del stock */
   unidadesBase: number
+  /** variante.unidades_base; 1 para productos sin variantes */
+  unidadesBaseFactor: number
   originalPrecio: number
   basePrecio: number
   despachoPrecio: number
@@ -120,6 +125,7 @@ export async function registrarVenta(
       negocio_id,
       venta_id: ventaId,
       producto_id: i.productId,
+      variante_id: i.varianteId ?? null,
       nombre: i.nombre,
       categoria: i.categoria,
       qty: i.qty,

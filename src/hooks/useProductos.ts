@@ -3,6 +3,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+export interface ProductoVariante {
+  id: string
+  producto_id: string
+  nombre: string            // "Trozo 500 gr"
+  precio: number
+  precio_despacho: number | null
+  unidades_base: number     // stock del producto padre descontado por unidad vendida
+  activo: boolean
+  orden: number
+}
+
+export type InsertVariante = Omit<ProductoVariante, 'id'>
+
 export interface Producto {
   id: string
   negocio_id: string
@@ -22,16 +35,31 @@ export interface Producto {
   margen: number
   margen_pct: number
   vendido: number
+  variantes: ProductoVariante[]
 }
 
-export type InsertProducto = Omit<Producto, 'id' | 'negocio_id' | 'activo' | 'margen' | 'margen_pct' | 'vendido'>
+export type InsertProducto = Omit<Producto, 'id' | 'negocio_id' | 'activo' | 'margen' | 'margen_pct' | 'vendido' | 'variantes'>
 
-function calcular(row: Record<string, unknown>): Producto {
+function calcularVariante(row: Record<string, unknown>): ProductoVariante {
+  return {
+    id:              row.id as string,
+    producto_id:     row.producto_id as string,
+    nombre:          row.nombre as string,
+    precio:          Number(row.precio) || 0,
+    precio_despacho: row.precio_despacho != null ? Number(row.precio_despacho) : null,
+    unidades_base:   Number(row.unidades_base) || 1,
+    activo:          Boolean(row.activo),
+    orden:           Number(row.orden) || 0,
+  }
+}
+
+function calcular(row: Record<string, unknown>, variantesMap?: Map<string, ProductoVariante[]>): Producto {
   const costo = Number(row.costo) || 0
   const precio = Number(row.precio) || 0
   const margen = precio - costo
+  const id = row.id as string
   return {
-    id:              row.id as string,
+    id,
     negocio_id:      row.negocio_id as string,
     nombre:          row.nombre as string,
     categoria:       row.categoria as string,
@@ -47,7 +75,8 @@ function calcular(row: Record<string, unknown>): Producto {
     activo:          Boolean(row.activo),
     margen,
     margen_pct:      precio > 0 ? (margen / precio) * 100 : 0,
-    vendido:         0, // se calculará desde ventas en B-022
+    vendido:         0,
+    variantes:       variantesMap?.get(id) ?? [],
   }
 }
 
@@ -69,7 +98,7 @@ export function useProductos() {
       const nid = (perfil as { negocio_id: string }).negocio_id
       setNegocioId(nid)
 
-      const [{ data }, { data: vendidoData }] = await Promise.all([
+      const [{ data }, { data: vendidoData }, { data: variantesData }] = await Promise.all([
         supabase
           .from('productos')
           .select('*')
@@ -84,6 +113,13 @@ export function useProductos() {
           .eq('negocio_id', nid)
           .not('producto_id', 'is', null)
           .range(0, 49999),
+        supabase
+          .from('producto_variantes')
+          .select('*')
+          .eq('negocio_id', nid)
+          .eq('activo', true)
+          .order('orden')
+          .order('nombre'),
       ])
 
       if (!cancelled) {
@@ -91,9 +127,16 @@ export function useProductos() {
         for (const row of (vendidoData ?? []) as { producto_id: string; qty: number }[]) {
           vendidoMap.set(row.producto_id, (vendidoMap.get(row.producto_id) ?? 0) + Number(row.qty))
         }
+        const variantesMap = new Map<string, ProductoVariante[]>()
+        for (const row of (variantesData ?? []) as Record<string, unknown>[]) {
+          const v = calcularVariante(row)
+          const arr = variantesMap.get(v.producto_id) ?? []
+          arr.push(v)
+          variantesMap.set(v.producto_id, arr)
+        }
         setProductos(
           ((data ?? []) as Record<string, unknown>[]).map(r => ({
-            ...calcular(r),
+            ...calcular(r, variantesMap),
             vendido: vendidoMap.get(r.id as string) ?? 0,
           }))
         )
@@ -161,7 +204,7 @@ export function useProductos() {
       .insert(rows.map((p) => ({ ...p, negocio_id: negocioId, activo: true })))
       .select('*')
     if (error) throw error
-    const nuevos = ((data ?? []) as Record<string, unknown>[]).map(calcular)
+    const nuevos = ((data ?? []) as Record<string, unknown>[]).map(r => calcular(r))
     setProductos((ps) => [...ps, ...nuevos])
   }, [negocioId])
 
@@ -178,5 +221,51 @@ export function useProductos() {
     setProductos(ps => ps.map(p => p.id === id ? { ...p, stock: nuevoStock } : p))
   }, [negocioId])
 
-  return { productos, loading, agregar, actualizar, eliminar, reponer, ajustar, importarMasivo }
+  /* ── CRUD de variantes ── */
+
+  const agregarVariante = useCallback(async (productoId: string, v: Omit<InsertVariante, 'producto_id'>): Promise<ProductoVariante> => {
+    if (!negocioId) throw new Error('Negocio no disponible')
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('producto_variantes')
+      .insert({ ...v, producto_id: productoId, negocio_id: negocioId, activo: true })
+      .select('*')
+      .single()
+    if (error) throw error
+    const nueva = calcularVariante(data as Record<string, unknown>)
+    setProductos(ps => ps.map(p => p.id === productoId
+      ? { ...p, variantes: [...p.variantes, nueva].sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre)) }
+      : p))
+    return nueva
+  }, [negocioId])
+
+  const actualizarVariante = useCallback(async (varianteId: string, patch: Partial<Omit<InsertVariante, 'producto_id'>>) => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('producto_variantes')
+      .update(patch)
+      .eq('id', varianteId)
+      .select('*')
+      .single()
+    if (error) throw error
+    const actualizada = calcularVariante(data as Record<string, unknown>)
+    setProductos(ps => ps.map(p => ({
+      ...p,
+      variantes: p.variantes.map(v => v.id === varianteId ? actualizada : v),
+    })))
+  }, [])
+
+  const eliminarVariante = useCallback(async (varianteId: string, productoId: string) => {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('producto_variantes')
+      .update({ activo: false })
+      .eq('id', varianteId)
+    if (error) throw error
+    setProductos(ps => ps.map(p => p.id === productoId
+      ? { ...p, variantes: p.variantes.filter(v => v.id !== varianteId) }
+      : p))
+  }, [])
+
+  return { productos, loading, agregar, actualizar, eliminar, reponer, ajustar, importarMasivo, agregarVariante, actualizarVariante, eliminarVariante }
 }

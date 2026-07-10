@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { useVentas, type CartItem, type VentaConfirmada, type ClienteRef } from '@/hooks/useVentas'
-import { useProductos, type Producto } from '@/hooks/useProductos'
+import { useProductos, type Producto, type ProductoVariante } from '@/hooks/useProductos'
 import { useCategorias } from '@/hooks/useCategorias'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
 import { useClientes, type ClienteDB } from '@/hooks/useClientes'
@@ -60,12 +60,12 @@ function ProductPicker({
   tipo: 'local' | 'despacho'
   productos: Producto[]
   categorias: string[]
-  onPick: (p: Producto) => void
+  onPick: (p: Producto, v?: ProductoVariante) => void
 }) {
   const [cat, setCat] = useState('Todas')
   const [q, setQ] = useState('')
+  const [pendingProd, setPendingProd] = useState<Producto | null>(null)
 
-  // Chips de categoría ordenados por ventas totales de sus productos
   const cats = useMemo(() => {
     const totalPorCat = new Map<string, number>()
     for (const p of productos) {
@@ -90,8 +90,16 @@ function ProductPicker({
     return st === 'sin' ? 'Sin stock' : `${fmtStock(p.stock, p.unidad)} ${UNIT_IS_WEIGHT(p.unidad) ? p.unidad : 'u.'}`
   }
 
+  const handlePick = (p: Producto) => {
+    if (p.variantes.length > 0) {
+      setPendingProd(p)
+    } else {
+      onPick(p)
+    }
+  }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minHeight: 0, position: 'relative' }}>
       <SearchBox value={q} onChange={setQ} placeholder="Buscar producto…" width="100%" />
       <div style={{ display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4 }}>
         {cats.map((c) => (
@@ -105,10 +113,11 @@ function ProductPicker({
         {list.map((p) => {
           const st = stockState(p)
           const precio = tipo === 'despacho' ? precioDespachoDe(p.precio, p.precio_despacho) : p.precio
+          const tieneVariantes = p.variantes.length > 0
           return (
             <button
               key={p.id}
-              onClick={() => { if (st !== 'sin') onPick(p) }}
+              onClick={() => { if (st !== 'sin') handlePick(p) }}
               disabled={st === 'sin'}
               className="card"
               style={{ padding: 0, textAlign: 'left', display: 'flex', flexDirection: 'column', cursor: st === 'sin' ? 'not-allowed' : 'pointer', opacity: st === 'sin' ? 0.55 : 1, transition: '.14s', overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--surface)' }}
@@ -123,16 +132,51 @@ function ProductPicker({
                 </div>
               )}
               <div style={{ padding: '9px 11px', display: 'flex', flexDirection: 'column', gap: 5, flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <span style={{ fontSize: 11, color: st === 'ok' ? 'var(--ink-3)' : st === 'bajo' ? 'oklch(0.50 0.10 70)' : 'var(--danger)', fontWeight: 700 }}>{stockLabel(p)}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  {tieneVariantes && <span className="chip" style={{ fontSize: 10, padding: '2px 6px', background: 'var(--primary-tint)', color: 'var(--primary-700)', border: 'none', fontWeight: 700 }}>{p.variantes.length} var.</span>}
+                  <span style={{ fontSize: 11, color: st === 'ok' ? 'var(--ink-3)' : st === 'bajo' ? 'oklch(0.50 0.10 70)' : 'var(--danger)', fontWeight: 700, marginLeft: 'auto' }}>{stockLabel(p)}</span>
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.25, flex: 1 }}>{p.nombre}</div>
-                <div className="tnum" style={{ fontWeight: 800, fontSize: 15.5 }}>{fmtCLP(precio)}</div>
+                {tieneVariantes
+                  ? <div style={{ fontSize: 11.5, color: 'var(--primary-700)', fontWeight: 700 }}>Elegir variante →</div>
+                  : <div className="tnum" style={{ fontWeight: 800, fontSize: 15.5 }}>{fmtCLP(precio)}</div>}
               </div>
             </button>
           )
         })}
       </div>
+
+      {/* Selector de variantes */}
+      {pendingProd && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', borderRadius: 12, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div className="card" style={{ width: '100%', maxWidth: 380, padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{pendingProd.nombre}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-3)', fontWeight: 600, marginTop: 2 }}>Elige una variante</div>
+              </div>
+              <button className="btn btn-ghost btn-icon" style={{ width: 28, height: 28 }} onClick={() => setPendingProd(null)}><Icon name="x" size={14} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {pendingProd.variantes.map((v) => {
+                const precio = tipo === 'despacho' ? (v.precio_despacho ?? v.precio) : v.precio
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => { onPick(pendingProd, v); setPendingProd(null) }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', border: '1px solid var(--line)', borderRadius: 10, background: 'var(--surface)', cursor: 'pointer', fontFamily: 'inherit', transition: '.12s' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--primary-tint)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.background = 'var(--surface)' }}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>{v.nombre}</span>
+                    <span className="tnum" style={{ fontWeight: 800, fontSize: 15, color: 'var(--primary-700)' }}>{fmtCLP(precio)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -317,10 +361,10 @@ function CartItemRow({
 }: {
   i: CartItem
   verDinero: boolean
-  setQtySimple: (id: string, d: number) => void
-  setQtyDirect: (id: string, v: number) => void
-  setItemPrice: (id: string, v: number) => void
-  remove: (id: string) => void
+  setQtySimple: (cartKey: string, d: number) => void
+  setQtyDirect: (cartKey: string, v: number) => void
+  setItemPrice: (cartKey: string, v: number) => void
+  remove: (cartKey: string) => void
 }) {
   const gain = (i.precio - i.costo) * i.qty
   const gainPct = i.precio ? ((i.precio - i.costo) / i.precio) * 100 : 0
@@ -334,19 +378,19 @@ function CartItemRow({
           <div style={{ fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{i.nombre}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.productId, -step)}><Icon name="minus" size={13} /></button>
+          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.cartKey, -step)}><Icon name="minus" size={13} /></button>
           {isWeight
-            ? <QtyInput value={i.qty} unit={i.unidad} onChange={(v) => setQtyDirect(i.productId, v)} />
+            ? <QtyInput value={i.qty} unit={i.unidad} onChange={(v) => setQtyDirect(i.cartKey, v)} />
             : <span className="tnum" style={{ width: 20, textAlign: 'center', fontWeight: 800, fontSize: 14 }}>{i.qty}</span>}
-          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.productId, step)}><Icon name="plus" size={13} /></button>
+          <button className="btn btn-ghost btn-icon" style={{ width: 27, height: 27 }} onClick={() => setQtySimple(i.cartKey, step)}><Icon name="plus" size={13} /></button>
         </div>
         <div className="tnum" style={{ width: 72, textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{fmtCLP(i.precio * i.qty)}</div>
-        <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24, color: 'var(--ink-3)' }} onClick={() => remove(i.productId)} title="Quitar"><Icon name="x" size={13} /></button>
+        <button className="btn btn-ghost btn-icon" style={{ width: 24, height: 24, color: 'var(--ink-3)' }} onClick={() => remove(i.cartKey)} title="Quitar"><Icon name="x" size={13} /></button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
           <span style={{ fontSize: 11.5, color: 'var(--ink-3)', fontWeight: 600 }}>Precio c/u:</span>
-          <InlinePriceEdit value={i.precio} label="Editar precio unitario" onChange={(v) => setItemPrice(i.productId, v)} />
+          <InlinePriceEdit value={i.precio} label="Editar precio unitario" onChange={(v) => setItemPrice(i.cartKey, v)} />
           {priceChanged && <span style={{ fontSize: 11, color: 'var(--warn)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3 }}><Icon name="edit" size={11} />Modificado</span>}
         </div>
         {verDinero && (
@@ -396,6 +440,7 @@ export default function VentasPage() {
   const [mStep, setMStep] = useState<'catalogo' | 'carrito' | 'pago'>('catalogo')
   const [mCat, setMCat] = useState('Todas')
   const [mQuery, setMQuery] = useState('')
+  const [mPendingProd, setMPendingProd] = useState<Producto | null>(null)
   const [showDiscount, setShowDiscount] = useState(false)
   const [showCliente, setShowCliente] = useState(false)
   const draftKey = 'cl_draft_cart_v2'
@@ -405,24 +450,40 @@ export default function VentasPage() {
   const loadDraft = () => {
     try {
       const d = JSON.parse(localStorage.getItem(draftKey) || 'null')
-      if (d) { setCart((d.cart || []).map((i: CartItem) => ({ ...i }))); setMethod(d.method || 'Efectivo'); setTipo(d.tipo || 'local'); localStorage.removeItem(draftKey) }
+      if (d) {
+        setCart((d.cart || []).map((i: CartItem) => ({
+          ...i,
+          cartKey: i.cartKey ?? i.productId,
+          varianteId: i.varianteId ?? null,
+          unidadesBaseFactor: i.unidadesBaseFactor ?? 1,
+        })))
+        setMethod(d.method || 'Efectivo')
+        setTipo(d.tipo || 'local')
+        localStorage.removeItem(draftKey)
+      }
     } catch { /* draft inválido */ }
   }
 
-  // Unidades comprometidas en carrito para un producto (anti-sobreventa)
-  const baseEnCarro = useCallback((id: string) =>
-    cart.filter((i) => i.productId === id).reduce((a, i) => a + i.unidadesBase, 0),
+  // Unidades base comprometidas en carrito para un producto (anti-sobreventa)
+  const baseEnCarro = useCallback((productId: string) =>
+    cart.filter((i) => i.productId === productId).reduce((a, i) => a + i.unidadesBase, 0),
     [cart])
 
-  const add = useCallback((p: Producto) => {
-    if (baseEnCarro(p.id) + 1 > p.stock) return
-    const basePrecio = p.precio
-    const despachoPrecio = precioDespachoDe(p.precio, p.precio_despacho)
+  const add = useCallback((p: Producto, v?: ProductoVariante) => {
+    const factor = v?.unidades_base ?? 1
+    if (baseEnCarro(p.id) + factor > p.stock) return
+    const cartKey = v ? `${p.id}__${v.id}` : p.id
+    const nombre = v ? `${p.nombre} — ${v.nombre}` : p.nombre
+    const basePrecio = v ? v.precio : p.precio
+    const despachoPrecio = v ? (v.precio_despacho ?? v.precio) : precioDespachoDe(p.precio, p.precio_despacho)
     const precio = tipo === 'despacho' ? despachoPrecio : basePrecio
+    const varianteId = v?.id ?? null
     setCart((c) => {
-      const e = c.find((i) => i.productId === p.id)
-      if (e) return c.map((i) => i.productId === p.id ? { ...i, qty: i.qty + 1, unidadesBase: i.unidadesBase + 1 } : i)
-      return [...c, { productId: p.id, nombre: p.nombre, categoria: p.categoria, precio, costo: p.costo, qty: 1, unidadesBase: 1, originalPrecio: precio, basePrecio, despachoPrecio, unidad: p.unidad, fotoUrl: p.foto_url }]
+      const e = c.find((i) => i.cartKey === cartKey)
+      if (e) return c.map((i) => i.cartKey === cartKey
+        ? { ...i, qty: i.qty + 1, unidadesBase: i.unidadesBase + factor }
+        : i)
+      return [...c, { cartKey, productId: p.id, varianteId, nombre, categoria: p.categoria, precio, costo: p.costo, qty: 1, unidadesBase: factor, unidadesBaseFactor: factor, originalPrecio: precio, basePrecio, despachoPrecio, unidad: p.unidad, fotoUrl: p.foto_url }]
     })
   }, [baseEnCarro, tipo])
 
@@ -434,31 +495,38 @@ export default function VentasPage() {
     }))
   }
 
-  const setQtySimple = useCallback((id: string, d: number) => {
+  const setQtySimple = useCallback((cartKey: string, d: number) => {
     if (d > 0) {
-      const p = productos.find((x) => x.id === id)
-      if (p && baseEnCarro(id) + d > p.stock) return
+      const item = cart.find((i) => i.cartKey === cartKey)
+      if (item) {
+        const p = productos.find((x) => x.id === item.productId)
+        if (p && baseEnCarro(item.productId) + d * item.unidadesBaseFactor > p.stock) return
+      }
     }
     setCart((c) => c.map((i) => {
-      if (i.productId !== id) return i
+      if (i.cartKey !== cartKey) return i
       const min = UNIT_IS_WEIGHT(i.unidad) ? 0.5 : 1
       const newQty = Math.max(min, Math.round((i.qty + d) * 1000) / 1000)
-      return { ...i, qty: newQty, unidadesBase: newQty }
+      return { ...i, qty: newQty, unidadesBase: Math.round(newQty * i.unidadesBaseFactor * 10000) / 10000 }
     }))
-  }, [baseEnCarro, productos])
+  }, [baseEnCarro, cart, productos])
 
-  const setQtyDirect = useCallback((id: string, v: number) => {
-    const p = productos.find((x) => x.id === id)
-    if (p && v > p.stock) return
+  const setQtyDirect = useCallback((cartKey: string, v: number) => {
+    const item = cart.find((i) => i.cartKey === cartKey)
+    if (item) {
+      const otherBase = cart.filter((x) => x.productId === item.productId && x.cartKey !== cartKey).reduce((a, x) => a + x.unidadesBase, 0)
+      const p = productos.find((x) => x.id === item.productId)
+      if (p && otherBase + v * item.unidadesBaseFactor > p.stock) return
+    }
     const clamped = Math.max(0.1, Math.round(v * 1000) / 1000)
-    setCart((c) => c.map((i) => i.productId === id ? { ...i, qty: clamped, unidadesBase: clamped } : i))
-  }, [productos])
+    setCart((c) => c.map((i) => i.cartKey === cartKey ? { ...i, qty: clamped, unidadesBase: Math.round(clamped * i.unidadesBaseFactor * 10000) / 10000 } : i))
+  }, [cart, productos])
 
-  const setItemPrice = useCallback((id: string, newPrice: number) =>
-    setCart((c) => c.map((i) => i.productId === id ? { ...i, precio: Math.max(0, newPrice) } : i)), [])
+  const setItemPrice = useCallback((cartKey: string, newPrice: number) =>
+    setCart((c) => c.map((i) => i.cartKey === cartKey ? { ...i, precio: Math.max(0, newPrice) } : i)), [])
 
-  const remove = useCallback((id: string) =>
-    setCart((c) => c.filter((i) => i.productId !== id)), [])
+  const remove = useCallback((cartKey: string) =>
+    setCart((c) => c.filter((i) => i.cartKey !== cartKey)), [])
 
   const subtotal = cart.reduce((a, i) => a + i.precio * i.qty, 0)
   const costTotal = cart.reduce((a, i) => a + i.costo * i.qty, 0)
@@ -535,7 +603,7 @@ export default function VentasPage() {
                   const st = stockState(p)
                   const q = qtyOf(p.id)
                   return (
-                    <button key={p.id} disabled={st === 'sin'} onClick={() => { if (st !== 'sin') add(p) }} className="card" style={{ position: 'relative', padding: 0, overflow: 'hidden', textAlign: 'left', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', opacity: st === 'sin' ? 0.5 : 1, cursor: st === 'sin' ? 'not-allowed' : 'pointer' }}>
+                    <button key={p.id} disabled={st === 'sin'} onClick={() => { if (st !== 'sin') { if (p.variantes.length > 0) setMPendingProd(p); else add(p) } }} className="card" style={{ position: 'relative', padding: 0, overflow: 'hidden', textAlign: 'left', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', opacity: st === 'sin' ? 0.5 : 1, cursor: st === 'sin' ? 'not-allowed' : 'pointer' }}>
                       {q > 0 && <span style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 6px', borderRadius: 7, background: 'var(--primary)', color: '#fff', fontWeight: 800, fontSize: 13, display: 'grid', placeItems: 'center', zIndex: 2 }}>{q}</span>}
                       <div style={{ width: '100%', aspectRatio: '1 / 1', flexShrink: 0, background: p.foto_url ? undefined : `${catColor(p.categoria)}18` }}>
                         {p.foto_url ? <img src={p.foto_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}><CatDot cat={p.categoria} size={18} /></div>}
@@ -565,7 +633,7 @@ export default function VentasPage() {
               <EmptyState icon="ventas" title="Carrito vacío" text="Vuelve al catálogo y elige productos." />
             ) : (
               <div className="card">
-                {cart.map((i) => <CartItemRow key={i.productId} i={i} setQtySimple={setQtySimple} setQtyDirect={setQtyDirect} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
+                {cart.map((i) => <CartItemRow key={i.cartKey} i={i} setQtySimple={setQtySimple} setQtyDirect={setQtyDirect} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
                 <div style={{ padding: '14px 18px' }}>
                   {!showDiscount && discAmt === 0 ? (
                     <button className="btn btn-ghost" style={{ color: 'var(--primary-700)', fontWeight: 700, padding: 0 }} onClick={() => setShowDiscount(true)}><Icon name="tag" size={14} />Dar descuento</button>
@@ -639,6 +707,32 @@ export default function VentasPage() {
           {mStep === 'pago' && <button className="btn btn-lg" style={{ flex: 1, background: method === 'Crédito' ? 'var(--warn)' : 'var(--primary)', color: '#fff', justifyContent: 'center' }} disabled={!canConfirm} onClick={confirm}><Icon name={method === 'Crédito' ? 'receipt' : tipo === 'despacho' ? 'truck' : 'check'} size={18} />{submitting ? 'Registrando…' : method === 'Crédito' ? 'Registrar a crédito' : 'Confirmar'} · {fmtCLP(finalTotal)}</button>}
         </div>
 
+        {/* Selector de variantes — móvil */}
+        {mPendingProd && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 55, display: 'flex', alignItems: 'flex-end' }} onClick={() => setMPendingProd(null)}>
+            <div className="card" style={{ width: '100%', borderRadius: '18px 18px 0 0', padding: '20px 16px 32px', display: 'flex', flexDirection: 'column', gap: 14 }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 800, fontSize: 16 }}>{mPendingProd.nombre}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 2 }}>Elige una variante</div>
+                </div>
+                <button className="btn btn-ghost btn-icon" onClick={() => setMPendingProd(null)}><Icon name="x" size={15} /></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {mPendingProd.variantes.map((v) => {
+                  const precio = tipo === 'despacho' ? (v.precio_despacho ?? v.precio) : v.precio
+                  return (
+                    <button key={v.id} onClick={() => { add(mPendingProd, v); setMPendingProd(null) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 16px', border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{v.nombre}</span>
+                      <span className="tnum" style={{ fontWeight: 800, fontSize: 16, color: 'var(--primary-700)' }}>{fmtCLP(precio)}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {confirmed && <ComprobanteModal sale={confirmed} negocioNombre={config.nombre_negocio} onClose={() => setConfirmed(null)} />}
       </div>
     )
@@ -696,7 +790,7 @@ export default function VentasPage() {
           <div style={{ maxHeight: 240, overflowY: 'auto', borderTop: '1px solid var(--line)' }}>
             {cart.length === 0
               ? <EmptyState icon="ventas" title="Carrito vacío" text="Elige productos de la izquierda para empezar." />
-              : cart.map((i) => <CartItemRow key={i.productId} i={i} setQtySimple={setQtySimple} setQtyDirect={setQtyDirect} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
+              : cart.map((i) => <CartItemRow key={i.cartKey} i={i} setQtySimple={setQtySimple} setQtyDirect={setQtyDirect} remove={remove} setItemPrice={setItemPrice} verDinero={verDinero} />)}
           </div>
 
           {/* Totales + pago */}

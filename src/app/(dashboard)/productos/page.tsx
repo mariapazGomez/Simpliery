@@ -6,7 +6,7 @@ import { PageHeader, SearchBox, CatDot, MarginBadge, EmptyState, Field, MoneyInp
 import { PRODUCT_UNITS } from '@/types'
 import { fmtCLP, fmtNum, fmtPct, fmtStock } from '@/lib/format'
 import { parseExcel, downloadTemplate } from '@/lib/excel'
-import { useProductos, type Producto, type InsertProducto } from '@/hooks/useProductos'
+import { useProductos, type Producto, type InsertProducto, type ProductoVariante, type InsertVariante } from '@/hooks/useProductos'
 import { useCategorias, type Categoria } from '@/hooks/useCategorias'
 import { useConfiguracion } from '@/hooks/useConfiguracion'
 
@@ -587,9 +587,151 @@ function ImportProductosModal({
   )
 }
 
+/* ---------- Modal de variantes ---------- */
+interface VarianteForm { nombre: string; precio: number | ''; precio_despacho: number | ''; unidades_base: number | '' }
+const emptyVF: VarianteForm = { nombre: '', precio: '', precio_despacho: '', unidades_base: '' }
+
+function VariantesModal({
+  producto,
+  onClose,
+  agregar,
+  actualizar,
+  eliminar,
+}: {
+  producto: Producto
+  onClose: () => void
+  agregar: (productoId: string, v: Omit<InsertVariante, 'producto_id'>) => Promise<ProductoVariante>
+  actualizar: (varianteId: string, patch: Partial<Omit<InsertVariante, 'producto_id'>>) => Promise<void>
+  eliminar: (varianteId: string, productoId: string) => Promise<void>
+}) {
+  const [editId, setEditId] = useState<string | 'nueva' | null>(null)
+  const [form, setForm] = useState<VarianteForm>(emptyVF)
+  const [saving, setSaving] = useState(false)
+
+  const set = <K extends keyof VarianteForm>(k: K, v: VarianteForm[K]) => setForm(s => ({ ...s, [k]: v }))
+
+  const startNueva = () => { setForm(emptyVF); setEditId('nueva') }
+  const startEdit = (v: ProductoVariante) => {
+    setForm({ nombre: v.nombre, precio: v.precio, precio_despacho: v.precio_despacho ?? '', unidades_base: v.unidades_base })
+    setEditId(v.id)
+  }
+  const cancel = () => { setEditId(null); setForm(emptyVF) }
+
+  const handleSave = async () => {
+    const nombre = form.nombre.trim()
+    if (!nombre || !form.precio) return
+    const payload: Omit<InsertVariante, 'producto_id'> = {
+      nombre,
+      precio: +form.precio,
+      precio_despacho: form.precio_despacho !== '' ? +form.precio_despacho : null,
+      unidades_base: form.unidades_base !== '' ? +form.unidades_base : 1,
+      activo: true,
+      orden: 0,
+    }
+    setSaving(true)
+    try {
+      if (editId === 'nueva') {
+        await agregar(producto.id, payload)
+      } else if (editId) {
+        await actualizar(editId, payload)
+      }
+      cancel()
+    } catch (e) {
+      window.alert('Error: ' + (e instanceof Error ? e.message : 'error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (v: ProductoVariante) => {
+    if (!window.confirm(`¿Desactivar la variante "${v.nombre}"?`)) return
+    setSaving(true)
+    try {
+      await eliminar(v.id, producto.id)
+    } catch (e) {
+      window.alert('Error: ' + (e instanceof Error ? e.message : 'error'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isNew = editId === 'nueva'
+  const valid = !!form.nombre.trim() && !!form.precio
+
+  return (
+    <Modal
+      title={`Variantes — ${producto.nombre}`}
+      sub={`Las variantes permiten ofrecer este producto en distintas presentaciones o tamaños. El stock siempre se descuenta del producto base (${producto.unidad}).`}
+      onClose={onClose}
+      width={560}
+      footer={
+        editId ? (
+          <>
+            <button className="btn btn-ghost" onClick={cancel}>Cancelar</button>
+            <button className="btn btn-primary" disabled={!valid || saving} onClick={handleSave}>
+              <Icon name="check" size={16} />{saving ? 'Guardando…' : isNew ? 'Crear variante' : 'Guardar cambios'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
+            <button className="btn btn-soft" onClick={startNueva}>
+              <Icon name="plus" size={15} />Nueva variante
+            </button>
+          </>
+        )
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Lista de variantes existentes */}
+        {producto.variantes.length === 0 && !editId && (
+          <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--ink-3)', fontWeight: 600, fontSize: 14 }}>
+            Sin variantes. Haz clic en "Nueva variante" para crear una.
+          </div>
+        )}
+        {producto.variantes.map(v => (
+          <div key={v.id} style={{ padding: '12px 14px', border: '1px solid var(--line)', borderRadius: 12, background: editId === v.id ? 'var(--primary-tint)' : 'var(--surface-3)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{v.nombre}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--ink-3)', fontWeight: 600, marginTop: 2 }}>
+                {fmtCLP(v.precio)} presencial
+                {v.precio_despacho && <> · {fmtCLP(v.precio_despacho)} despacho</>}
+                {' · '}{v.unidades_base} {producto.unidad}/venta
+              </div>
+            </div>
+            <button className="btn btn-ghost btn-icon" style={{ width: 32, height: 32 }} title="Editar" onClick={() => startEdit(v)} disabled={!!editId}><Icon name="edit" size={14} /></button>
+            <button className="btn btn-ghost btn-icon" style={{ width: 32, height: 32, color: 'var(--danger)' }} title="Desactivar" onClick={() => handleDelete(v)} disabled={!!editId || saving}><Icon name="trash" size={14} /></button>
+          </div>
+        ))}
+
+        {/* Formulario de creación/edición */}
+        {editId && (
+          <div style={{ padding: '16px', border: '2px solid var(--primary)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--primary-tint)' }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--primary-700)' }}>{isNew ? 'Nueva variante' : 'Editar variante'}</div>
+            <Field label="Nombre de la variante">
+              <input className="input" autoFocus value={form.nombre} onChange={e => set('nombre', e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder={`Ej: Trozo 500 g, Pack x6…`} />
+            </Field>
+            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <Field label="Precio presencial">
+                <MoneyInput value={form.precio} onChange={v => set('precio', v)} placeholder="0" />
+              </Field>
+              <Field label="Precio despacho" hint="Vacío = mismo que presencial">
+                <MoneyInput value={form.precio_despacho} onChange={v => set('precio_despacho', v)} placeholder={form.precio ? String(form.precio) : '0'} />
+              </Field>
+            </div>
+            <Field label={`Unidades de "${producto.unidad}" que consume por venta`} hint={`Ej: variante "500g" de un producto en kg → 0.5`}>
+              <input className="input tnum" inputMode="decimal" value={String(form.unidades_base)} onChange={e => set('unidades_base', e.target.value === '' ? '' : (parseFloat(e.target.value) || ''))} placeholder="1" />
+            </Field>
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 /* ---------- Pantalla principal ---------- */
 export default function ProductosPage() {
-  const { productos, loading, agregar, actualizar, eliminar, importarMasivo } = useProductos()
+  const { productos, loading, agregar, actualizar, eliminar, importarMasivo, agregarVariante, actualizarVariante, eliminarVariante } = useProductos()
   const { categorias, agregar: agregarCat, renombrar: renombrarCat, eliminar: eliminarCat, sincronizarDesdeProductos } = useCategorias()
   const { config } = useConfiguracion()
 
@@ -599,6 +741,7 @@ export default function ProductosPage() {
   const [cat, setCat] = useState('Todas')
   const [form, setForm] = useState(false)
   const [edit, setEdit] = useState<Producto | null>(null)
+  const [variantProd, setVariantProd] = useState<Producto | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [sort, setSort] = useState<{ k: keyof Producto; dir: number }>({ k: 'nombre', dir: 1 })
   const [dragRow, setDragRow] = useState<string | null>(null)
@@ -755,6 +898,9 @@ export default function ProductosPage() {
                     <td className="num" style={{ color: 'var(--ink-3)' }}>{fmtNum(p.vendido)}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-ghost btn-icon" title={p.variantes.length > 0 ? `${p.variantes.length} variante${p.variantes.length > 1 ? 's' : ''}` : 'Agregar variantes'} onClick={() => setVariantProd(p)} style={{ width: 32, height: 32, color: p.variantes.length > 0 ? 'var(--primary-700)' : 'var(--ink-3)' }}>
+                          <Icon name="tag" size={14} />
+                        </button>
                         <button className="btn btn-ghost btn-icon" title="Editar" onClick={() => setEdit(p)} style={{ width: 32, height: 32 }}>
                           <Icon name="edit" size={15} />
                         </button>
@@ -793,6 +939,20 @@ export default function ProductosPage() {
           onClose={() => setEdit(null)}
         />
       )}
+
+      {/* Modal variantes — usa la versión live del producto para reflejar cambios */}
+      {variantProd && (() => {
+        const liveProd = productos.find(p => p.id === variantProd.id) ?? variantProd
+        return (
+          <VariantesModal
+            producto={liveProd}
+            onClose={() => setVariantProd(null)}
+            agregar={agregarVariante}
+            actualizar={actualizarVariante}
+            eliminar={eliminarVariante}
+          />
+        )
+      })()}
 
       {/* Modal importación masiva */}
       {showImport && (
